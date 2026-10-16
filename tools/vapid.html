@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VAPID klíče</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 16px; background: #f2f4f7; color: #1d2939; }
+    button { font: inherit; padding: .6rem 1rem; border-radius: 8px; border: 0; background: #1f4e8c; color: #fff; cursor: pointer; }
+    pre { background: #fff; padding: 1rem; border-radius: 8px; white-space: pre-wrap; word-break: break-all; }
+  </style>
+</head>
+<body>
+  <h1>Klíče pro push upozornění (VAPID)</h1>
+  <p>Klíče se vytvoří jen v tomto prohlížeči, nikam se neposílají. Vygenerujte je jednou a uložte:
+    <b>veřejný</b> klíč patří do <code>js/config.js</code> i do Supabase Secrets,
+    <b>soukromý</b> jen do Supabase Secrets (nikdy ho nedávejte do aplikace ani na GitHub).</p>
+  <button id="generate">Vygenerovat klíče</button>
+  <pre id="out"></pre>
+  <script>
+    const b64u = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)))
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    document.getElementById('generate').onclick = async () => {
+      const keys = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+      const pub = await crypto.subtle.exportKey('raw', keys.publicKey);
+      const priv = await crypto.subtle.exportKey('jwk', keys.privateKey);
+      document.getElementById('out').textContent =
+        `VAPID_PUBLIC_KEY=${b64u(pub)}\nVAPID_PRIVATE_KEY=${priv.d}\nVAPID_SUBJECT=mailto:vas@email.cz`;
+    };
+  </script>
+</body>
+</html>
