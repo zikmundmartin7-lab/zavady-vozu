@@ -4,4 +4,4 @@ export const SUPABASE_URL = 'https://tfbirhsjavejkyscmacw.supabase.co';
 export const SUPABASE_ANON_KEY = 'sb_publishable_8_8Ba8atiptC7t8AxCJ6zg_6KcJPznJ';
 
 // Veřejný VAPID klíč pro push upozornění na telefon (postup v README.md).
-export const VAPID_PUBLIC_KEY = '';
+export const VAPID_PUBLIC_KEY = 'BETPzNEbAr8-tarMfmh3-mIP02R_6Dv6Vo7WWhURMaydcVN5CGLtWbX5CkdUPSrSUDb9meqY9vqU7Q7UHpdhruc';
