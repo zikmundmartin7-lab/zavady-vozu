@@ -53,7 +53,9 @@ Data se ukládají v [Supabase](https://supabase.com): databázi, přihlašován
 
 ## Instalace na Android
 
-Návod pro kolegy (stránka s QR kódem): <https://zikmundmartin7-lab.github.io/zavady-vozu/navod.html>. Odkaz je i na přihlašovací obrazovce.
+Návod pro kolegy pro Android i iPhone (stránka s QR kódem): <https://zikmundmartin7-lab.github.io/zavady-vozu/navod.html>. Odkaz je i na přihlašovací obrazovce.
+
+**iPhone / iPad (iOS 16.4+):** Safari → Sdílet → Přidat na plochu. Upozornění fungují jen v aplikaci spuštěné z ikony na ploše.
 
 1. Otevřete adresu aplikace v **Chrome**.
 2. Menu ⋮ → **Přidat na plochu** (nebo **Instalovat aplikaci**).
@@ -82,7 +84,7 @@ js/ui.js, js/views/*.js                   obrazovky (Preact + htm, bez sestavov�
 supabase/schema.sql                       tabulky, oprávnění (RLS), úložiště
 supabase/functions/notify-new-defect/     rozesílání push upozornění
 supabase/oprava_*.sql, migrace_*.sql      jednorázové opravy a úpravy databáze (už provedené)
-navod.html                                návod k instalaci na Android (QR: tools/qr.py)
+navod.html                                návod k instalaci, Android i iPhone (QR: tools/qr.py)
 tools/ikony.py, tools/vapid.html          ikony aplikace, generátor klíčů
 .github/workflows/keep-alive.yml          udržení projektu Supabase vzhůru
 ```
