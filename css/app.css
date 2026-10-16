@@ -30,6 +30,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; background: var(--bg); }
 body { min-height: 100dvh; overflow-x: hidden; }
 a { color: var(--primary); text-decoration: none; }
@@ -358,6 +359,7 @@ a.card.list-row { padding: 16px; }
 .tabs button { border: 0; background: none; padding: .55rem; border-radius: 8px; cursor: pointer; font-weight: 600; color: var(--muted); }
 .tabs button.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
 .demo-users { display: grid; gap: 8px; }
+.install-link { display: block; text-align: center; margin-top: 1rem; font-weight: 550; }
 .demo-user { justify-content: space-between; margin: 0; }
 .user-row { gap: .6rem; }
 .user-row.pending { background: #fff8e6; }

@@ -84,6 +84,7 @@ export function LoginView() {
     <main class="page narrow login">
       <div class="logo"><img src="icons/icon.svg" alt="" width="72" height="72" /><h1>Závady vozů</h1></div>
       ${api.mode === 'demo' ? html`<${DemoLogin} />` : html`<${RealLogin} />`}
+      <a class="install-link" href="navod.html">Jak nainstalovat aplikaci do telefonu?</a>
     </main>`;
 }
 

@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Instalace na Android – Závady vozů</title>
+  <meta name="description" content="Jak nainstalovat aplikaci Závady vozů do telefonu s Androidem" />
+  <meta name="theme-color" content="#1f4e8c" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="css/app.css" />
+  <style>
+    .guide { padding-bottom: 48px; }
+    .warn.in-app { display: block; line-height: 1.5; }
+    .hero { display: grid; grid-template-columns: 64px 1fr; gap: 14px; align-items: center; }
+    .hero img { width: 64px; height: 64px; border-radius: 16px; box-shadow: var(--shadow); }
+    .hero h2 { font-size: 1.15rem; margin: 0 0 .2rem; }
+    .hero p { margin: 0; color: var(--muted); font-size: .95rem; }
+    .hero .btn { grid-column: 1 / -1; margin: .4rem 0 0; }
+
+    .steps { list-style: none; margin: 0; padding: 0; }
+    .step { display: grid; grid-template-columns: 36px 1fr; gap: 12px; align-items: start; }
+    .step-no {
+      width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center;
+      background: var(--primary); color: #fff; font-weight: 700; font-size: 1.05rem;
+    }
+    .step h3 { margin: .35rem 0 .3rem; font-size: 1.05rem; }
+    .step p, .step li { margin: .25rem 0; }
+    .step ul { margin: .2rem 0; padding-left: 1.1rem; }
+    .key {
+      display: inline-block; padding: 0 .45rem; border-radius: 6px; background: var(--bg);
+      border: 1px solid var(--border); font-weight: 650; white-space: nowrap;
+    }
+    .url {
+      display: block; margin: .5rem 0; padding: .6rem .8rem; border-radius: 10px; background: var(--primary-soft);
+      color: var(--primary); font-weight: 650; overflow-wrap: anywhere;
+    }
+    .homescreen {
+      display: inline-flex; flex-direction: column; align-items: center; gap: 4px; margin: .4rem 0;
+      padding: 10px 14px; border-radius: 14px; background: linear-gradient(160deg, #3a6ea5, #1f4e8c); color: #fff;
+      font-size: .75rem;
+    }
+    .homescreen img { width: 52px; height: 52px; border-radius: 14px; }
+
+    details { border-top: 1px solid var(--border); padding: .7rem 0; }
+    details:first-of-type { border-top: 0; }
+    summary { cursor: pointer; font-weight: 650; list-style-position: outside; }
+    details p, details ul { margin: .4rem 0 0; }
+    details ul { padding-left: 1.1rem; }
+
+    .qr-card { display: none; text-align: center; }
+    .qr-card img { width: 220px; height: 220px; background: #fff; padding: 8px; border-radius: 12px; border: 1px solid var(--border); }
+    @media (min-width: 700px) { .qr-card { display: block; } }
+    @media print {
+      .topbar, .hero .btn, #install, .in-app { display: none !important; }
+      .qr-card { display: block; }
+      .card { box-shadow: none; border: 1px solid var(--border); break-inside: avoid; }
+    }
+    .foot { text-align: center; color: var(--muted); font-size: .85rem; margin-top: 1.5rem; }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-title">
+      <h1>Závady vozů</h1>
+      <div class="topbar-sub">Instalace do telefonu s Androidem</div>
+    </div>
+  </header>
+
+  <main class="page narrow guide">
+    <section class="card hero">
+      <img src="icons/icon-192.png" alt="" />
+      <div>
+        <h2>Aplikace na evidenci závad vozů</h2>
+        <p>Instalace zabere asi 2 minuty. Aplikace se nestahuje z Google Play, přidá se z prohlížeče Chrome a pak funguje jako běžná aplikace.</p>
+      </div>
+      <a class="btn btn-primary block big-btn" href="./">Otevřít aplikaci</a>
+    </section>
+
+    <div class="warn in-app" id="in-app" hidden>
+      <b>Návod máte otevřený uvnitř jiné aplikace</b> (WhatsApp, Messenger, e-mail…). Odtud instalace nejde.
+      Klepněte vpravo nahoře na <span class="key">⋮</span> a zvolte <b>Otevřít v Chrome</b>.
+    </div>
+
+    <ol class="steps">
+      <li class="card step">
+        <span class="step-no">1</span>
+        <div>
+          <h3>Otevřete aplikaci v Chrome</h3>
+          <p>Spusťte prohlížeč <b>Chrome</b> a otevřete adresu:</p>
+          <a class="url" href="./">zikmundmartin7-lab.github.io/zavady-vozu</a>
+          <p class="muted small">Pokud jste odkaz dostali přes WhatsApp nebo Messenger, otevře se v jejich prohlížeči.
+            Klepněte na <span class="key">⋮</span> → <b>Otevřít v Chrome</b>.</p>
+        </div>
+      </li>
+
+      <li class="card step">
+        <span class="step-no">2</span>
+        <div>
+          <h3>Přidejte ji na plochu</h3>
+          <p>Dole se objeví lišta <b>Instalovat aplikaci</b>. Klepněte na <b>Instalovat</b>.</p>
+          <p>Když se lišta neukáže:</p>
+          <ul>
+            <li>vpravo nahoře klepněte na <span class="key">⋮</span> (tři tečky),</li>
+            <li>vyberte <b>Přidat na plochu</b> (případně <b>Instalovat aplikaci</b>),</li>
+            <li>potvrďte <b>Instalovat</b>.</li>
+          </ul>
+          <button class="btn btn-primary" id="install" hidden>Instalovat teď</button>
+        </div>
+      </li>
+
+      <li class="card step">
+        <span class="step-no">3</span>
+        <div>
+          <h3>Spouštějte ji z ikony</h3>
+          <p>Na ploše (nebo v seznamu aplikací) přibude tato ikona:</p>
+          <span class="homescreen"><img src="icons/icon-192.png" alt="" />Závady vozů</span>
+          <p>Od teď aplikaci otevírejte <b>vždy z ikony</b>, ne z Chromu.</p>
+        </div>
+      </li>
+
+      <li class="card step">
+        <span class="step-no">4</span>
+        <div>
+          <h3>Zaregistrujte se (jen poprvé)</h3>
+          <ul>
+            <li>klepněte na záložku <b>Registrovat</b>,</li>
+            <li>vyplňte <b>jméno a příjmení</b>, <b>e-mail</b> a <b>heslo</b> (aspoň 6 znaků),</li>
+            <li>klepněte na <b>Vytvořit účet</b>.</li>
+          </ul>
+          <p>Uvidíte <b>„Účet čeká na schválení“</b>. Až ho správce schválí, klepněte na <b>Zkontrolovat znovu</b>.</p>
+          <p class="muted small">Kdo už účet má, jen se přihlásí e-mailem a heslem.</p>
+        </div>
+      </li>
+
+      <li class="card step">
+        <span class="step-no">5</span>
+        <div>
+          <h3>Zapněte upozornění na nové závady</h3>
+          <ul>
+            <li>vpravo nahoře klepněte na <b>kolečko s iniciálami</b> → <b>Můj účet</b>,</li>
+            <li>klepněte na <b>Zapnout upozornění</b> a pak na <b>Povolit</b>,</li>
+            <li>pro kontrolu klepněte na <b>Poslat zkušební</b>. Za pár sekund přijde oznámení.</li>
+          </ul>
+        </div>
+      </li>
+    </ol>
+
+    <section class="card">
+      <h2>Když něco nejde</h2>
+      <details>
+        <summary>Nechodí upozornění</summary>
+        <ul>
+          <li><b>Nastavení → Aplikace → Závady vozů</b> (případně <b>Chrome</b>) <b>→ Oznámení</b>: zapnout.</li>
+          <li>Telefony Samsung, Xiaomi nebo Huawei kvůli šetření baterie upozornění někdy blokují.
+            Pomůže <b>Nastavení → Aplikace → Chrome → Baterie → Bez omezení</b>.</li>
+        </ul>
+      </details>
+      <details>
+        <summary>Nejde vyfotit nebo natočit video</summary>
+        <p>Při prvním klepnutí na <b>Vyfotit</b> je potřeba povolit fotoaparát. Když se to omylem odmítne:
+          <b>Nastavení → Aplikace → Chrome → Oprávnění → Fotoaparát</b> → Povolit.</p>
+      </details>
+      <details>
+        <summary>Nejde se přihlásit</summary>
+        <p>Zkontrolujte e-mail a heslo. Pokud účet ještě čeká na schválení, ozvěte se správci aplikace.</p>
+      </details>
+      <details>
+        <summary>Jak získám novou verzi aplikace?</summary>
+        <p>Stahuje se sama. Stačí aplikaci zavřít a znovu otevřít.</p>
+      </details>
+      <details>
+        <summary>Jak aplikaci odinstalovat?</summary>
+        <p>Podržte prst na ikoně a zvolte <b>Odinstalovat</b> (nebo <b>Odebrat</b>).</p>
+      </details>
+      <details>
+        <summary>Anonymní okno</summary>
+        <p>V anonymním okně Chromu aplikace nezůstane přihlášená. Používejte běžné okno nebo ikonu na ploše.</p>
+      </details>
+    </section>
+
+    <section class="card qr-card">
+      <h2 style="justify-content: center">Otevřít návod v telefonu</h2>
+      <img src="icons/qr-navod.svg" alt="QR kód s odkazem na tento návod" />
+      <p class="muted">Naskenujte fotoaparátem telefonu. QR kód můžete i vytisknout a vyvěsit.</p>
+    </section>
+
+    <p class="foot">Odkaz na tento návod: <b>zikmundmartin7-lab.github.io/zavady-vozu/navod.html</b></p>
+  </main>
+
+  <script>
+    // Odkaz otevřený uvnitř jiné aplikace (WhatsApp, Messenger, Instagram…) – tam instalace nejde.
+    if (/; wv\)|FBAN|FBAV|Instagram|WhatsApp|Line\//.test(navigator.userAgent)) {
+      document.getElementById('in-app').hidden = false;
+    }
+    // Chrome nabídne instalaci přímo z této stránky
+    let installEvent = null;
+    addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      installEvent = e;
+      document.getElementById('install').hidden = false;
+    });
+    document.getElementById('install').addEventListener('click', async () => {
+      if (!installEvent) return;
+      installEvent.prompt();
+      await installEvent.userChoice;
+      installEvent = null;
+      document.getElementById('install').hidden = true;
+    });
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  </script>
+</body>
+</html>

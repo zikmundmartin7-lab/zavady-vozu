@@ -53,6 +53,8 @@ Data se ukládají v [Supabase](https://supabase.com): databázi, přihlašován
 
 ## Instalace na Android
 
+Návod pro kolegy (stránka s QR kódem): <https://zikmundmartin7-lab.github.io/zavady-vozu/navod.html>. Odkaz je i na přihlašovací obrazovce.
+
 1. Otevřete adresu aplikace v **Chrome**.
 2. Menu ⋮ → **Přidat na plochu** (nebo **Instalovat aplikaci**).
 3. Aplikace se pak spouští z ikony, bez lišty prohlížeče, a umí přijímat upozornění.
@@ -80,6 +82,7 @@ js/ui.js, js/views/*.js                   obrazovky (Preact + htm, bez sestavov�
 supabase/schema.sql                       tabulky, oprávnění (RLS), úložiště
 supabase/functions/notify-new-defect/     rozesílání push upozornění
 supabase/oprava_*.sql, migrace_*.sql      jednorázové opravy a úpravy databáze (už provedené)
+navod.html                                návod k instalaci na Android (QR: tools/qr.py)
 tools/ikony.py, tools/vapid.html          ikony aplikace, generátor klíčů
 .github/workflows/keep-alive.yml          udržení projektu Supabase vzhůru
 ```
