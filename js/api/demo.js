@@ -2,7 +2,7 @@
 // Rozhraní je stejné jako u Supabase (supabase.js), takže aplikace neví, s čím pracuje.
 // Pravidla oprávnění jsou tu napodobena podle supabase/schema.sql.
 
-import { can, checkDigit, compressImage, matchesQuery, uid } from '../model.js';
+import { can, checkDigit, checkFoundAt, compressImage, matchesQuery, uid } from '../model.js';
 
 const KEY = 'zavady-demo-v1';
 const USER_KEY = 'zavady-demo-user';
@@ -232,11 +232,14 @@ export const api = {
     const d = state.defects.find((x) => x.id === id);
     return d ? defectFeed(d) : null;
   },
-  async createDefect({ wagon_id, severity, description }, files = [], onProgress) {
+  async createDefect({ wagon_id, severity, description, found_at }, files = [], onProgress) {
     const m = requireMember();
+    const now = new Date().toISOString();
+    const problem = found_at && checkFoundAt(found_at);
+    if (problem) throw new Error(problem);
     const d = {
-      id: uid(), wagon_id, severity, description: description.trim(),
-      created_by: m.id, created_at: new Date().toISOString(), updated_at: null,
+      id: uid(), wagon_id, severity, description: description.trim(), found_at: found_at ?? now,
+      created_by: m.id, created_at: now, updated_at: null,
       resolved_at: null, resolved_by: null, resolution_note: null,
     };
     state.defects.push(d);
@@ -244,10 +247,13 @@ export const api = {
     commit({ newDefect: d, own: true });
     return d;
   },
-  async updateDefect(id, { severity, description }, newFiles = [], removeIds = [], onProgress) {
+  async updateDefect(id, { severity, description, found_at }, newFiles = [], removeIds = [], onProgress) {
     const d = findDefect(id);
     if (!can.edit(me(), d)) throw new Error('Závadu může upravit jen ten, kdo ji vložil, nebo správce.');
+    const problem = found_at && checkFoundAt(found_at, d.resolved_at);
+    if (problem) throw new Error(problem);
     Object.assign(d, { severity, description: description.trim(), updated_at: new Date().toISOString() });
+    if (found_at) d.found_at = found_at;
     await removeFiles(removeIds);
     await storeFiles(id, newFiles, onProgress);
     commit();
@@ -407,6 +413,8 @@ function seed() {
       const resolved = rnd() < 0.35;
       const d = {
         id: uid(), wagon_id: w.id, severity: 1 + Math.floor(rnd() * 3), description: pick(texts),
+        // část závad zapsána zpětně (zjištěno o několik hodin dřív)
+        found_at: rnd() < 0.25 ? new Date(Date.parse(created) - (2 + rnd() * 20) * 36e5).toISOString() : created,
         created_by: pick(reporters), created_at: created, updated_at: null,
         resolved_at: resolved ? new Date(Date.parse(created) + (1 + rnd() * 5) * 864e5).toISOString() : null,
         resolved_by: resolved ? 'u-opravar' : null,

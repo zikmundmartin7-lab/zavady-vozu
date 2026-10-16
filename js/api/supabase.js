@@ -158,17 +158,18 @@ export const api = {
     const d = check(await sb.from('defect_feed').select('*').eq('id', id).maybeSingle());
     return d ? (await withUrls([d]))[0] : null;
   },
-  async createDefect({ wagon_id, severity, description }, files = [], onProgress) {
+  async createDefect({ wagon_id, severity, description, found_at }, files = [], onProgress) {
     const d = check(await sb.from('defects').insert({
-      wagon_id, severity, description: description.trim(), created_by: await currentUserId(),
+      wagon_id, severity, description: description.trim(), found_at, created_by: await currentUserId(),
     }).select().single());
     await uploadFiles(d.id, files, onProgress);
     // Rozeslání upozornění ostatním (Edge Function notify-new-defect). Chyba nevadí – závada je uložená.
     sb.functions.invoke('notify-new-defect', { body: { defect_id: d.id } }).catch(() => {});
     return d;
   },
-  async updateDefect(id, { severity, description }, newFiles = [], removeIds = [], onProgress) {
-    check(await sb.from('defects').update({ severity, description: description.trim() }).eq('id', id));
+  async updateDefect(id, { severity, description, found_at }, newFiles = [], removeIds = [], onProgress) {
+    const patch = { severity, description: description.trim(), ...(found_at ? { found_at } : {}) };
+    check(await sb.from('defects').update(patch).eq('id', id));
     if (removeIds.length) {
       const atts = check(await sb.from('attachments').select('path').in('id', removeIds));
       await removeStorage(atts.map((a) => a.path));

@@ -2,7 +2,8 @@
 
 import { html, useEffect, useMemo, useState } from '../../vendor/preact-htm.js';
 import {
-  MAX_VIDEO_MB, SEVERITY, can, checkDigit, digitsOnly, formatNumber, isCompleteNumber, isValidCheckDigit,
+  MAX_VIDEO_MB, SEVERITY, can, checkDigit, checkFoundAt, digitsOnly, foundAtOf, formatNumber, isCompleteNumber,
+  isValidCheckDigit, toLocalInput,
 } from '../model.js';
 import { Empty, ErrorBox, Icon, Loading, TopBar, WagonNumber, replace, useApp, useLoad } from '../ui.js';
 
@@ -44,6 +45,8 @@ export function DefectFormView({ editId, params }) {
   const [groupId, setGroupId] = useState(Number(params.get('skupina')) || null);
   const [severity, setSeverity] = useState(null);
   const [description, setDescription] = useState('');
+  const [foundAt, setFoundAt] = useState(() => toLocalInput(new Date()));
+  const [initialFoundAt, setInitialFoundAt] = useState(null); // při úpravě: původní hodnota
   const [files, setFiles] = useState([]);
   const [removeIds, setRemoveIds] = useState([]);
   const [busy, setBusy] = useState('');
@@ -52,7 +55,12 @@ export function DefectFormView({ editId, params }) {
   // Při úpravě předvyplnit hodnoty
   useEffect(() => {
     const d = existingDefect.data;
-    if (d) { setSeverity(d.severity); setDescription(d.description); }
+    if (d) {
+      setSeverity(d.severity);
+      setDescription(d.description);
+      setFoundAt(toLocalInput(foundAtOf(d)));
+      setInitialFoundAt(toLocalInput(foundAtOf(d)));
+    }
   }, [existingDefect.data?.id]);
 
   // Po zadání celého čísla zjistit, jestli vůz už existuje
@@ -96,10 +104,14 @@ export function DefectFormView({ editId, params }) {
       }
       if (!severity) throw new Error('Vyberte závažnost závady.');
       if (!description.trim()) throw new Error('Popište závadu.');
+      const foundProblem = checkFoundAt(foundAt, editId ? existingDefect.data.resolved_at : null);
+      if (foundProblem) throw new Error(foundProblem);
+      // Při úpravě se datum posílá, jen když ho někdo změnil (jinak by se ztratily sekundy a závada by byla „upravená“).
+      const found_at = editId && foundAt === initialFoundAt ? undefined : new Date(foundAt).toISOString();
 
       if (editId) {
         setBusy('Ukládám…');
-        await api.updateDefect(editId, { severity, description }, files, removeIds,
+        await api.updateDefect(editId, { severity, description, found_at }, files, removeIds,
           (i, n) => setBusy(`Nahrávám přílohu ${i}/${n}…`));
         toast('Závada upravena.');
         replace(`#/vuz/${existingDefect.data.wagon_id}`);
@@ -107,7 +119,7 @@ export function DefectFormView({ editId, params }) {
       }
       setBusy('Ukládám…');
       if (!wagon) wagon = found ?? await api.createWagon(number, groupId);
-      await api.createDefect({ wagon_id: wagon.id, severity, description }, files,
+      await api.createDefect({ wagon_id: wagon.id, severity, description, found_at }, files,
         (i, n) => setBusy(`Nahrávám přílohu ${i}/${n}…`));
       toast('Závada uložena. Ostatní uživatelé dostanou upozornění.');
       replace(`#/vuz/${wagon.id}`);
@@ -170,6 +182,17 @@ export function DefectFormView({ editId, params }) {
           <h2 class="field-label">Popis závady</h2>
           <textarea rows="4" placeholder="Co je špatně, kde přesně na voze…" value=${description}
             onInput=${(e) => setDescription(e.currentTarget.value)}></textarea>
+        </section>
+
+        <section class="card">
+          <h2 class="field-label">Datum a čas zjištění</h2>
+          <div class="date-row">
+            <input type="datetime-local" class="date-input" value=${foundAt} max=${toLocalInput(new Date())}
+              onInput=${(e) => setFoundAt(e.currentTarget.value)} required />
+            <button type="button" class="btn" onClick=${() => setFoundAt(toLocalInput(new Date()))}>Teď</button>
+          </div>
+          ${Date.now() - Date.parse(foundAt) > 15 * 60 * 1000 && html`
+            <div class="hint">Závada se zapíše zpětně – na kartě bude vidět i skutečný čas zápisu.</div>`}
         </section>
 
         <section class="card">

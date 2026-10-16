@@ -1,7 +1,7 @@
 // Sdílené komponenty a pomocné funkce pro obrazovky.
 
 import { html, createContext, useContext, useEffect, useRef, useState } from '../vendor/preact-htm.js';
-import { SEVERITY, can, digitsOnly, formatDateTime, plural, splitNumber } from './model.js';
+import { SEVERITY, can, digitsOnly, foundAtOf, formatDateTime, plural, splitNumber } from './model.js';
 
 export const AppCtx = createContext(null);
 export const useApp = () => useContext(AppCtx);
@@ -198,6 +198,8 @@ export function DefectCard({ d, showComments = true }) {
   const [busy, setBusy] = useState(false);
   const resolved = !!d.resolved_at;
   const color = resolved ? 'ok' : SEVERITY[d.severity].color;
+  const foundAt = foundAtOf(d);
+  const backdated = Date.parse(d.created_at) - Date.parse(foundAt) > 15 * 60 * 1000;
 
   async function run(fn, okMsg) {
     setBusy(true);
@@ -225,11 +227,11 @@ export function DefectCard({ d, showComments = true }) {
     <article class="defect defect-${color}">
       <div class="defect-head">
         <${SevChip} severity=${d.severity} resolved=${resolved} />
-        <span class="muted small">${formatDateTime(d.created_at)}</span>
+        <span class="muted small" title="Datum a čas zjištění">zjištěno ${formatDateTime(foundAt)}</span>
       </div>
       <p class="defect-text">${d.description}</p>
       <div class="muted small">
-        Vložil(a) ${d.created_by_name || 'neznámý uživatel'}${d.updated_at ? ' · upraveno' : ''}
+        Vložil(a) ${d.created_by_name || 'neznámý uživatel'}${backdated ? ` · zapsáno ${formatDateTime(d.created_at)}` : ''}${d.updated_at ? ' · upraveno' : ''}
         ${resolved && html` · závažnost: ${SEVERITY[d.severity].label.toLowerCase()}`}
       </div>
 

@@ -291,6 +291,12 @@ a.card.list-row { padding: 16px; }
 .field-label { font-size: .9rem; color: var(--muted); font-weight: 600; margin-bottom: .6rem; }
 .field { display: block; font-size: .9rem; color: var(--muted); font-weight: 550; margin-bottom: .4rem; }
 .field input { margin-top: .3rem; color: var(--text); font-size: 1rem; }
+.date-row { display: flex; gap: 8px; align-items: stretch; }
+.date-input {
+  flex: 1; min-width: 0; min-height: 46px; border: 1px solid var(--border); border-radius: 10px;
+  padding: .5rem .75rem; background: var(--surface); font-size: 1.05rem;
+}
+.date-input:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
 .number-input { font-size: 1.5rem; letter-spacing: .04em; font-variant-numeric: tabular-nums; margin-bottom: 0; }
 .severity-select { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .sev-btn {

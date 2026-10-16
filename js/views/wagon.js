@@ -1,7 +1,7 @@
 // Detail vozu: aktivní závady, skrytá historie oprav, správa vozu pro správce.
 
 import { html, useState } from '../../vendor/preact-htm.js';
-import { can, checkDigit, formatNumber, isValidCheckDigit, plural } from '../model.js';
+import { can, checkDigit, formatNumber, foundAtOf, isValidCheckDigit, plural } from '../model.js';
 import {
   DefectCard, Empty, ErrorBox, Icon, Loading, TopBar, WagonNumber, replace, useApp, useLoad,
 } from '../ui.js';
@@ -23,7 +23,7 @@ export function WagonView({ id }) {
 
   const all = defects.data ?? [];
   const open = all.filter((d) => !d.resolved_at)
-    .sort((a, b) => b.severity - a.severity || b.created_at.localeCompare(a.created_at));
+    .sort((a, b) => b.severity - a.severity || Date.parse(foundAtOf(b)) - Date.parse(foundAtOf(a)));
   const resolved = all.filter((d) => d.resolved_at).sort((a, b) => b.resolved_at.localeCompare(a.resolved_at));
 
   async function changeGroup(e) {

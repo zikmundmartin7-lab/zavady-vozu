@@ -112,3 +112,24 @@ export async function compressImage(file, max = 1920, quality = 0.82) {
 }
 
 export const MAX_VIDEO_MB = 50;
+
+// ───── Datum zjištění ─────
+
+export const foundAtOf = (d) => d.found_at ?? d.created_at;
+
+// Hodnota pro <input type="datetime-local"> v místním čase: "2026-10-16T10:12"
+export function toLocalInput(date) {
+  const d = new Date(date);
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+// Stejná pravidla hlídá databáze (supabase/schema.sql → prepare_defect, protect_defect).
+// 5 minut rezerva na nepřesně nařízené hodiny v telefonu.
+export function checkFoundAt(value, resolvedAt) {
+  const t = Date.parse(value);
+  if (Number.isNaN(t)) return 'Vyplňte datum a čas zjištění.';
+  if (t > Date.now() + 5 * 60 * 1000) return 'Datum zjištění nemůže být v budoucnosti.';
+  if (resolvedAt && t > Date.parse(resolvedAt)) return 'Datum zjištění nemůže být pozdější než oprava závady.';
+  return null;
+}

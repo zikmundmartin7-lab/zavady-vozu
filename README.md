@@ -8,6 +8,7 @@ Aplikace pro evidenci závad železničních vozů. Běží v prohlížeči na p
 - **Hledání podle posledního čtyřčíslí**: napíšou se jen 4 číslice, pomlčka před kontrolní číslicí je předvyplněná (`017-4`). Funguje na úvodní obrazovce i uvnitř skupiny a výsledky se ukazují už během psaní. Vložené celé číslo vozu se zkrátí na poslední 4 číslice.
 - **Detail vozu:** aktivní závady barevně podle závažnosti (žlutá, oranžová, červená), s datem, textem, fotkami a videi. Opravené závady jsou zelené a skryté pod tlačítkem **Historie oprav**.
 - **Nová závada:** číslo vozu ve formátu `XX XX XXXX XXX-X` s kontrolou kontrolní číslice (UIC, Luhnův algoritmus). Nový vůz se založí automaticky, stačí vybrat skupinu. Fotky lze vyfotit, video natočit nebo obojí vybrat z galerie. Fotky se před nahráním zmenší.
+- **Datum a čas zjištění:** předvyplní se aktuální čas, ale jde zadat i zpětně (ne do budoucna). Měnit ho smí autor závady nebo správce. U zpětně zapsané závady karta ukazuje i skutečný čas zápisu.
 - **Komentáře** k závadě ve stylu WhatsAppu, s živými aktualizacemi.
 - **Upozornění na novou závadu** přijde všem ostatním uživatelům jako push notifikace v telefonu i při zavřené aplikaci. Kdo má aplikaci otevřenou, uvidí upozornění přímo v ní.
 - **Oprávnění** hlídá přímo databáze:
@@ -23,7 +24,7 @@ První registrovaný uživatel se automaticky stane správcem. Další čekají 
 
 ## Vyzkoušení (ukázkový režim)
 
-Dokud v `js/config.js` není vyplněné Supabase, aplikace běží v **ukázkovém režimu** s vymyšlenými daty uloženými jen v prohlížeči. Spuštění:
+Dokud v `js/config.js` není vyplněné Supabase, aplikace běží v **ukázkovém režimu** s vymyšlenými daty uloženými jen v prohlížeči. Ukázkový režim se dá kdykoli zapnout i přidáním `?demo` k adrese (např. `…/zavady-vozu/?demo`), na ostrá data to nesahá. Spuštění:
 
 ```bash
 python3 -m http.server 8765
@@ -78,7 +79,7 @@ js/api/supabase.js | demo.js              ostrá data | ukázková data v prohl�
 js/ui.js, js/views/*.js                   obrazovky (Preact + htm, bez sestavování)
 supabase/schema.sql                       tabulky, oprávnění (RLS), úložiště
 supabase/functions/notify-new-defect/     rozesílání push upozornění
-supabase/oprava_*.sql                     jednorázové opravy diakritiky (už provedené)
+supabase/oprava_*.sql, migrace_*.sql      jednorázové opravy a úpravy databáze (už provedené)
 tools/ikony.py, tools/vapid.html          ikony aplikace, generátor klíčů
 .github/workflows/keep-alive.yml          udržení projektu Supabase vzhůru
 ```
