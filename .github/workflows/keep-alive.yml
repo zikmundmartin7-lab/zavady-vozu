@@ -1,0 +1,34 @@
+# Udržuje bezplatný projekt Supabase vzhůru: Supabase ho jinak po ~7 dnech bez používání uspí.
+# Dvakrát týdně pošle databázi jeden dotaz (bez přihlášení, takže žádná data nevrátí).
+# Když dotaz selže (projekt je už uspaný nebo nedostupný), běh skončí chybou a GitHub pošle e-mail.
+
+name: Udržet Supabase vzhůru
+
+on:
+  schedule:
+    - cron: '17 5 * * 1,4'   # pondělí a čtvrtek 5:17 UTC
+  workflow_dispatch:          # ruční spuštění: záložka Actions → Run workflow
+
+permissions:
+  contents: read
+  actions: write              # aby GitHub úlohu nevypnul po 60 dnech bez změn v repozitáři
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dotaz na databázi
+        run: |
+          URL=$(grep -oP "SUPABASE_URL = '\K[^']+" js/config.js)
+          KEY=$(grep -oP "SUPABASE_ANON_KEY = '\K[^']+" js/config.js)
+          CODE=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 \
+            "$URL/rest/v1/wagon_groups?select=id&limit=1" -H "apikey: $KEY")
+          echo "Supabase odpověděl HTTP $CODE"
+          test "$CODE" = "200"
+
+      - name: Nevypínat naplánovanou úlohu
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/keep-alive.yml/enable"
