@@ -1,6 +1,6 @@
 // Service worker: offline záloha aplikace a push upozornění na nové závady.
 
-const CACHE = 'zavady-v4';
+const CACHE = 'zavady-v5';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/config.js', 'js/model.js', 'js/ui.js', 'js/api/index.js', 'js/api/demo.js', 'js/api/supabase.js',

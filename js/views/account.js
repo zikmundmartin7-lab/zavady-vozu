@@ -241,7 +241,7 @@ export function UsersView() {
             </select>
           </li>`)}
       </ul>
-      <p class="hint">Uživatel: zakládá závady, komentuje a své závady může označit jako opravené. Opravář: navíc označuje jako opravené i cizí závady.
+      <p class="hint">Vozmistr: zakládá závady, komentuje a své závady může označit jako opravené. Opravář: navíc označuje jako opravené i cizí závady.
         Správce: vše včetně úprav a mazání cizích závad a správy uživatelů.</p>
     </main>`;
 }

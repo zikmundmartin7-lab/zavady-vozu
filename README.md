@@ -15,7 +15,7 @@ Aplikace pro evidenci závad železničních vozů. Běží v prohlížeči na p
 | Role | Co smí |
 |---|---|
 | Čeká na schválení | nic, jen vidí, že čeká (takto lze účet i zablokovat) |
-| Uživatel | zakládá vozy a závady, komentuje, **svoje** závady upravuje, maže a označuje jako opravené |
+| Vozmistr | zakládá vozy a závady, komentuje, **svoje** závady upravuje, maže a označuje jako opravené |
 | Opravář | navíc označuje jako opravené (zeleně) i **cizí** závady a vrací je zpět |
 | Správce | vše, včetně úprav a mazání cizích závad, změny skupiny vozu, mazání vozů a schvalování uživatelů |
 

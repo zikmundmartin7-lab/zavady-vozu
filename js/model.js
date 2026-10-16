@@ -50,7 +50,7 @@ export const SEVERITY = {
 
 export const ROLES = {
   pending: 'Čeká na schválení',
-  user: 'Uživatel',
+  user: 'Vozmistr',
   repairer: 'Opravář',
   admin: 'Správce',
 };

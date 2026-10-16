@@ -11,7 +11,7 @@ end $$;
 
 -- ───────────────────────── Uživatelé a role ─────────────────────────
 -- pending  = čeká na schválení správcem (nevidí žádná data)
--- user     = běžný uživatel (zakládá závady, komentuje, své závady i označí jako opravené)
+-- user     = vozmistr (zakládá závady, komentuje, své závady i označí jako opravené)
 -- repairer = opravář (navíc označuje jako opravené i cizí závady)
 -- admin    = správce (vše + úpravy cizích závad, správa uživatelů)
 
