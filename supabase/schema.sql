@@ -109,6 +109,7 @@ create table public.defects (
   wagon_id         uuid not null references public.wagons on delete cascade,
   severity         smallint not null check (severity between 1 and 3),
   description      text not null check (length(trim(description)) > 0),
+  found_at         timestamptz not null default now(),  -- datum a čas zjištění (lze zadat i zpětně)
   created_by       uuid references public.profiles on delete set null default auth.uid(),
   created_at       timestamptz not null default now(),
   updated_at       timestamptz,
@@ -120,8 +121,26 @@ create index defects_wagon_idx on public.defects (wagon_id);
 create index defects_open_idx on public.defects (wagon_id) where resolved_at is null;
 
 -- Kdo smí co měnit:
---   text a závažnost  → autor závady nebo správce
---   opraveno / vrátit → autor závady, opravář nebo správce
+--   text, závažnost, datum zjištění → autor závady nebo správce
+--   opraveno / vrátit               → autor závady, opravář nebo správce
+-- Datum zjištění nesmí být v budoucnosti (rezerva 5 min na nepřesné hodiny v telefonu)
+-- a u opravené závady nesmí být pozdější než oprava. Čas vložení a čas opravy určuje server.
+create or replace function public.prepare_defect() returns trigger
+language plpgsql as $$
+begin
+  new.created_at := now();
+  new.found_at := coalesce(new.found_at, now());
+  if new.found_at > now() + interval '5 minutes' then
+    raise exception 'Datum zjištění nemůže být v budoucnosti.';
+  end if;
+  return new;
+end $$;
+
+drop trigger if exists defects_prepare on public.defects;
+create trigger defects_prepare
+  before insert on public.defects
+  for each row execute function public.prepare_defect();
+
 create or replace function public.protect_defect() returns trigger
 language plpgsql as $$
 declare
@@ -129,16 +148,26 @@ declare
   resolution_changed boolean;
 begin
   content_changed := new.description is distinct from old.description
-                     or new.severity is distinct from old.severity;
+                     or new.severity is distinct from old.severity
+                     or new.found_at is distinct from old.found_at;
   resolution_changed := new.resolved_at is distinct from old.resolved_at
                         or new.resolution_note is distinct from old.resolution_note;
   if content_changed and not (old.created_by = auth.uid() or public.is_admin()) then
     raise exception 'Závadu může upravit jen ten, kdo ji vložil, nebo správce.';
   end if;
+  if new.found_at is distinct from old.found_at then
+    if new.found_at > now() + interval '5 minutes' then
+      raise exception 'Datum zjištění nemůže být v budoucnosti.';
+    end if;
+    if old.resolved_at is not null and new.found_at > old.resolved_at then
+      raise exception 'Datum zjištění nemůže být pozdější než oprava závady.';
+    end if;
+  end if;
   if resolution_changed then
     if not (public.can_resolve() or old.created_by = auth.uid()) then
       raise exception 'Závadu může označit jako opravenou jen její autor, opravář nebo správce.';
     end if;
+    if old.resolved_at is null and new.resolved_at is not null then new.resolved_at := now(); end if;
     new.resolved_by := case when new.resolved_at is null then null else auth.uid() end;
     if new.resolved_at is null then new.resolution_note := null; end if;
   else
@@ -151,6 +180,7 @@ begin
   return new;
 end $$;
 
+drop trigger if exists defects_protect on public.defects;
 create trigger defects_protect
   before update on public.defects
   for each row execute function public.protect_defect();
