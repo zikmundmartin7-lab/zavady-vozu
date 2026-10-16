@@ -2,6 +2,13 @@
 -- Spusťte celý soubor v Supabase: SQL Editor → New query → vložit → Run.
 -- Skript je možné spustit jen jednou na prázdný projekt.
 
+-- Pojistka: pokud se skript při kopírování poškodil (rozsypaná diakritika), nic se neprovede.
+do $$ begin
+  if 'č' <> U&'\010D' then
+    raise exception 'SKRIPT JE POSKOZENY: diakritika se pri kopirovani rozsypala. Zkopirujte ho znovu z GitHubu (tlacitko Copy raw file).';
+  end if;
+end $$;
+
 -- ───────────────────────── Uživatelé a role ─────────────────────────
 -- pending  = čeká na schválení správcem (nevidí žádná data)
 -- user     = běžný uživatel (zakládá závady, komentuje, své závady i označí jako opravené)
