@@ -64,7 +64,7 @@ Bezplatný tarif Supabase (ověřte aktuální stav na supabase.com/pricing):
 
 - 1 GB na fotky a videa, max. 50 MB na jeden soubor. Fotka po zmenšení má zhruba 0,3–0,5 MB, takže se vejdou tisíce fotek. Videa místo zaberou rychle.
 - 500 MB databáze, což na texty závad a komentáře stačí na roky.
-- Projekt se **uspí po týdnu bez používání**. Při běžném provozu to nehrozí.
+- Projekt se **uspí po týdnu bez používání**. Brání tomu naplánovaná úloha na GitHubu (`.github/workflows/keep-alive.yml`): v pondělí a ve čtvrtek pošle databázi jeden dotaz. Když selže, GitHub pošle e-mail. Uspaný projekt se probudí v Supabase tlačítkem **Restore project**.
 - Placený tarif Pro stojí 25 USD měsíčně a má 100 GB na soubory a žádné uspávání.
 
 ## Struktura
@@ -78,5 +78,7 @@ js/api/supabase.js | demo.js              ostrá data | ukázková data v prohl�
 js/ui.js, js/views/*.js                   obrazovky (Preact + htm, bez sestavování)
 supabase/schema.sql                       tabulky, oprávnění (RLS), úložiště
 supabase/functions/notify-new-defect/     rozesílání push upozornění
+supabase/oprava_*.sql                     jednorázové opravy diakritiky (už provedené)
 tools/ikony.py, tools/vapid.html          ikony aplikace, generátor klíčů
+.github/workflows/keep-alive.yml          udržení projektu Supabase vzhůru
 ```
