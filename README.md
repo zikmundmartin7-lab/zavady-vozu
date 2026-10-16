@@ -44,11 +44,11 @@ Data se ukládají v [Supabase](https://supabase.com): databázi, přihlašován
 
 ### Push upozornění na telefon
 
-1. Spusťte aplikaci lokálně (viz výše) a otevřete <http://localhost:8765/tools/vapid.html> → **Vygenerovat klíče**.
+1. Otevřete `tools/vapid.html` na adrese aplikace (nebo lokálně <http://localhost:8765/tools/vapid.html>) → **Vygenerovat klíče**.
 2. Veřejný klíč vložte do `js/config.js` (`VAPID_PUBLIC_KEY`).
 3. V Supabase: Edge Functions → Secrets → přidejte `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` a `VAPID_SUBJECT` (`mailto:` + váš e-mail).
-4. Edge Functions → Deploy a new function → Via Editor → název **`notify-new-defect`** → vložte obsah `supabase/functions/notify-new-defect/index.ts` → Deploy.
-5. Každý uživatel si upozornění zapne v aplikaci: Můj účet → **Zapnout upozornění**.
+4. Edge Functions → Deploy a new function → Via Editor → název **`notify-new-defect`** → vložte obsah `supabase/functions/notify-new-defect/index.ts` → Deploy. V nastavení funkce vypněte kontrolu JWT (funkce si přihlášení ověřuje sama).
+5. Každý uživatel si upozornění zapne v aplikaci: Můj účet → **Zapnout upozornění**. Tlačítkem **Poslat zkušební** si ověří, že chodí.
 
 ## Instalace na Android
 

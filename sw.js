@@ -1,6 +1,6 @@
 // Service worker: offline záloha aplikace a push upozornění na nové závady.
 
-const CACHE = 'zavady-v2';
+const CACHE = 'zavady-v3';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/config.js', 'js/model.js', 'js/ui.js', 'js/api/index.js', 'js/api/demo.js', 'js/api/supabase.js',
@@ -36,9 +36,9 @@ self.addEventListener('fetch', (e) => {
 self.addEventListener('push', (e) => {
   const data = e.data ? e.data.json() : {};
   e.waitUntil((async () => {
-    // Je-li aplikace právě otevřená, upozorní uživatele sama (živé aktualizace).
+    // Je-li aplikace právě otevřená, upozorní uživatele sama (živé aktualizace). Zkušební upozornění se ukáže vždy.
     const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    if (wins.some((w) => w.focused && w.visibilityState === 'visible')) return;
+    if (data.tag !== 'test' && wins.some((w) => w.focused && w.visibilityState === 'visible')) return;
     await self.registration.showNotification(data.title || 'Nová závada', {
       body: data.body || '',
       icon: 'icons/icon-192.png',

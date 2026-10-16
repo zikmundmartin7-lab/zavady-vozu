@@ -330,6 +330,12 @@ export const api = {
       const p = await Notification.requestPermission();
       if (p !== 'granted') throw new Error('Upozornění nejsou povolená v nastavení prohlížeče.');
     },
+    async test() {
+      const reg = await navigator.serviceWorker?.getRegistration();
+      if (!reg) throw new Error('Tento prohlížeč neumí zobrazit upozornění.');
+      await reg.showNotification('Zkušební upozornění', { body: 'Upozornění na nové závady fungují.', icon: 'icons/icon-192.png' });
+      return 1;
+    },
     async disable() { /* v demu nelze odvolat – stačí zakázat v prohlížeči */ },
   },
 };

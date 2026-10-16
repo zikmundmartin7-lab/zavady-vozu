@@ -247,6 +247,15 @@ export const api = {
         endpoint: sub.endpoint, subscription: sub.toJSON(), user_id: await currentUserId(),
       }));
     },
+    async test() {
+      const { data, error } = await sb.functions.invoke('notify-new-defect', { body: { test: true } });
+      if (error) {
+        const detail = await error.context?.json?.().catch(() => null);
+        throw new Error(detail?.error ?? 'Funkce pro upozornění neodpověděla – je nasazená v Supabase?');
+      }
+      if (data?.errors?.length) throw new Error(`Odeslání selhalo: ${data.errors[0]}`);
+      return data.sent;
+    },
     async disable() {
       if (!('serviceWorker' in navigator)) return;
       const reg = await navigator.serviceWorker.getRegistration();

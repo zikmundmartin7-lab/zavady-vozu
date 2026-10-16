@@ -141,6 +141,17 @@ export function AccountView() {
     e.preventDefault();
     try { await api.updateMyName(name); toast('Jméno uloženo.'); reloadMe(); } catch (err) { toast(err.message, { kind: 'error' }); }
   }
+  async function testPush() {
+    setBusy(true);
+    try {
+      const n = await api.push.test();
+      toast(`Zkušební upozornění odesláno (zařízení: ${n}).`);
+    } catch (err) {
+      toast(err.message, { kind: 'error' });
+    } finally {
+      setBusy(false);
+    }
+  }
   async function togglePush() {
     setBusy(true);
     try {
@@ -170,8 +181,11 @@ export function AccountView() {
             <p class="muted">${push === 'on'
               ? 'Zapnuto – když kdokoli vloží novou závadu, přijde vám upozornění i při zavřené aplikaci.'
               : 'Vypnuto. Zapněte, ať vám přijde upozornění, když někdo vloží novou závadu.'}</p>
-            <button class="btn ${push === 'on' ? '' : 'btn-primary'}" disabled=${busy} onClick=${togglePush}>
-              ${push === 'on' ? 'Vypnout upozornění' : 'Zapnout upozornění'}</button>
+            <div class="row">
+              <button class="btn ${push === 'on' ? '' : 'btn-primary'}" disabled=${busy} onClick=${togglePush}>
+                ${push === 'on' ? 'Vypnout upozornění' : 'Zapnout upozornění'}</button>
+              ${push === 'on' && html`<button class="btn" disabled=${busy} onClick=${testPush}>Poslat zkušební</button>`}
+            </div>
             ${api.mode === 'demo' && html`<p class="hint">V ukázkovém režimu chodí upozornění jen mezi kartami tohoto prohlížeče.</p>`}`
           : html`<p class="muted">${api.mode === 'supabase'
               ? 'Upozornění zatím nejsou nastavená (chybí VAPID klíč) nebo je tento prohlížeč nepodporuje.'
