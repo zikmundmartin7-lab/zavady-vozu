@@ -1,6 +1,6 @@
 // Service worker: rychlé spuštění z paměti telefonu, offline záloha a push upozornění na nové závady.
 
-const CACHE = 'zavady-v12';
+const CACHE = 'zavady-v13';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/config.js', 'js/model.js', 'js/codes.js', 'js/ui.js', 'js/api/index.js', 'js/api/demo.js', 'js/api/supabase.js',
@@ -57,7 +57,8 @@ self.addEventListener('push', (e) => {
   e.waitUntil((async () => {
     // Je-li aplikace právě otevřená, upozorní uživatele sama (živé aktualizace). Zkušební upozornění se ukáže vždy.
     const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    if (data.tag !== 'test' && wins.some((w) => w.focused && w.visibilityState === 'visible')) return;
+    const always = data.tag === 'test' || String(data.tag ?? '').startsWith('user-');
+    if (!always && wins.some((w) => w.focused && w.visibilityState === 'visible')) return;
     await self.registration.showNotification(data.title || 'Nová závada', {
       body: data.body || '',
       icon: 'icons/icon-192.png',

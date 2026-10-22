@@ -108,6 +108,8 @@ export const api = {
     const r = check(await sb.auth.signUp({
       email, password, options: { data: { full_name: fullName.trim() }, emailRedirectTo: appUrl() },
     }));
+    // Správcům přijde upozornění, že nový uživatel čeká na schválení (jde jen s přihlášením hned po registraci)
+    if (r.session) sb.functions.invoke('notify-new-defect', { body: { new_user: true } }).catch(() => {});
     return { needsConfirmation: !r.session };
   },
   async resetPassword(email) {

@@ -1,6 +1,7 @@
-// Supabase Edge Function: po vložení nové závady pošle push upozornění všem ostatním schváleným uživatelům.
-// Volá ji aplikace hned po uložení závady (js/api/supabase.js → createDefect).
-// S tělem { test: true } pošle zkušební upozornění jen na zařízení přihlášeného uživatele.
+// Supabase Edge Function: push upozornění do telefonů.
+//   { defect_id }      – nová závada → všem ostatním schváleným uživatelům (volá createDefect po uložení)
+//   { new_user: true } – nový uživatel se zaregistroval → správcům, ať ho schválí (volá signUp)
+//   { test: true }     – zkušební upozornění jen na zařízení přihlášeného uživatele
 //
 // Potřebné tajné hodnoty (Edge Functions → Secrets):
 //   VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT (např. mailto:vas@email.cz)
@@ -18,7 +19,6 @@ const cors = {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
 
-const SEVERITY: Record<number, string> = { 1: '🟡', 2: '🟠', 3: '🔴' };
 const formatNumber = (n: string) => `${n.slice(0, 2)} ${n.slice(2, 4)} ${n.slice(4, 8)} ${n.slice(8, 11)}-${n.slice(11)}`;
 
 // deno-lint-ignore no-explicit-any
@@ -74,8 +74,26 @@ Deno.serve(async (req) => {
     }));
   }
 
+  // Nový uživatel čeká na schválení → upozornit správce (jen hned po registraci, jen za sebe)
+  if (body.new_user) {
+    const { data: p } = await admin.from('profiles')
+      .select('id, full_name, email, role, created_at').eq('id', user.id).maybeSingle();
+    if (!p || p.role !== 'pending' || Date.now() - Date.parse(p.created_at) > 10 * 60_000) {
+      return json({ error: 'Není co oznámit.' }, 404);
+    }
+    const { data: subs } = await admin.from('push_subscriptions')
+      .select('endpoint, subscription, profiles!inner(role)')
+      .eq('profiles.role', 'admin');
+    return json(await send(subs ?? [], {
+      title: 'Nový uživatel čeká na schválení',
+      body: `${p.full_name || 'Bez jména'} (${p.email}) – schvalte v Můj účet → Správa uživatelů`,
+      url: '#/uzivatele',
+      tag: `user-${p.id}`,
+    }));
+  }
+
   const { data: d } = await asUser.from('defect_feed')
-    .select('id, wagon_id, severity, description, created_by, created_by_name, created_at')
+    .select('id, wagon_id, description, defect_code, created_by, created_by_name, created_at')
     .eq('id', body.defect_id).maybeSingle();
   // Upozornění smí rozeslat jen autor, a to jen krátce po vložení (ochrana proti zneužití).
   if (!d || d.created_by !== user.id || Date.now() - Date.parse(d.created_at) > 10 * 60_000) {
@@ -90,8 +108,9 @@ Deno.serve(async (req) => {
     .in('profiles.role', ['user', 'repairer', 'admin']);
 
   return json(await send(subs ?? [], {
-    title: `${SEVERITY[d.severity] ?? ''} Nová závada · ${w ? formatNumber(w.number) : ''}`.trim(),
-    body: `${w?.group_name ? `${w.group_name}: ` : ''}${d.description}${d.created_by_name ? ` (${d.created_by_name})` : ''}`,
+    title: `Nová závada${w ? ` · ${formatNumber(w.number)}` : ''}`,
+    body: `${w?.group_name ? `${w.group_name}: ` : ''}${d.defect_code ? `kód ${d.defect_code} – ` : ''}${d.description}`
+      + `${d.created_by_name ? ` (${d.created_by_name})` : ''}`,
     url: `#/vuz/${d.wagon_id}`,
     tag: d.id,
   }));

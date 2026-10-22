@@ -14,6 +14,7 @@ Aplikace pro evidenci závad železničních vozů. Běží v prohlížeči na p
 - **Datum a čas zjištění:** předvyplní se aktuální čas, ale jde zadat i zpětně (ne do budoucna). Měnit ho smí autor závady nebo správce. U zpětně zapsané závady karta ukazuje i skutečný čas zápisu.
 - **Komentáře** k závadě ve stylu WhatsAppu, s živými aktualizacemi.
 - **Upozornění na novou závadu** přijde všem ostatním uživatelům jako push notifikace v telefonu i při zavřené aplikaci. Kdo má aplikaci otevřenou, uvidí upozornění přímo v ní.
+- **Upozornění na nového uživatele:** po registraci přijde správcům „Nový uživatel čeká na schválení“, klepnutí otevře Správu uživatelů.
 - **Oprávnění** hlídá přímo databáze:
 
 | Role | Co smí |
