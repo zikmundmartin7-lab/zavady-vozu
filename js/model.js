@@ -40,13 +40,7 @@ export function matchesQuery(number, q) {
   return q.length <= SEARCH_DIGITS ? number.slice(-SEARCH_DIGITS).startsWith(q) : number.includes(q);
 }
 
-// ───── Závažnost, role, oprávnění ─────
-
-export const SEVERITY = {
-  1: { label: 'Nízká', color: 'yellow' },
-  2: { label: 'Střední', color: 'orange' },
-  3: { label: 'Vysoká', color: 'red' },
-};
+// ───── Role, oprávnění ─────
 
 export const ROLES = {
   pending: 'Čeká na schválení',

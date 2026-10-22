@@ -3,7 +3,7 @@
 import { html, useState } from '../../vendor/preact-htm.js';
 import { plural } from '../model.js';
 import {
-  Badge, Empty, ErrorBox, Fab, Icon, Loading, OpenCount, TopBar, UserButton, WagonNumber, WagonSearch,
+  Badge, BottomNav, Empty, ErrorBox, Fab, Icon, Loading, OpenCount, TopBar, UserButton, WagonNumber, WagonSearch,
   useApp, useLoad,
 } from '../ui.js';
 
@@ -14,7 +14,7 @@ export function HomeView() {
 
   return html`
     <${TopBar} title="Závady vozů"><${UserButton} /><//>
-    <main class="page">
+    <main class="page with-nav">
       <${WagonSearch} onQuery=${setQ} />
       ${!q && html`
         <${ErrorBox} error=${groups.error} />
@@ -30,7 +30,8 @@ export function HomeView() {
             </a>`)}
         </nav>`}
     </main>
-    <${Fab} href="#/nova" />`;
+    <${Fab} href="#/nova" />
+    <${BottomNav} active="vozy" />`;
 }
 
 function WagonList({ wagons }) {
@@ -62,7 +63,7 @@ export function GroupView({ id }) {
       sub=${g && (g.open_count ? plural(g.open_count, 'otevřená závada', 'otevřené závady', 'otevřených závad') : 'bez otevřených závad')}>
       <${Badge} n=${g?.open_count} class="badge-inline" />
     <//>
-    <main class="page">
+    <main class="page with-nav">
       <${WagonSearch} groupId=${id} onQuery=${setQ} />
       ${!q && html`
         <${ErrorBox} error=${wagons.error} />
@@ -79,5 +80,6 @@ export function GroupView({ id }) {
             </button>
             ${showAll && html`<${WagonList} wagons=${others} />`}`}`}`}
     </main>
-    <${Fab} href="#/nova?skupina=${id}" />`;
+    <${Fab} href="#/nova?skupina=${id}" />
+    <${BottomNav} active="vozy" />`;
 }

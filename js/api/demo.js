@@ -4,7 +4,7 @@
 
 import { can, checkDigit, checkFoundAt, compressImage, matchesQuery, uid } from '../model.js';
 
-const KEY = 'zavady-demo-v1';
+const KEY = 'zavady-demo-v2';
 const USER_KEY = 'zavady-demo-user';
 
 const GROUPS = [
@@ -12,13 +12,36 @@ const GROUPS = [
   [5, 'Trakce/Zetky'], [6, 'Plošiňáky/Res/Smmp'], [7, 'Ostatní'],
 ].map(([id, name]) => ({ id, name, sort: id }));
 
+// Ukázkový katalog: jen pár vymyšlených kódů (skutečný katalog přílohy 9 VSP je jen v ostré verzi)
+const c = (kod, cesta, popis = '', opatreni = '', trida = '', kontext = '') =>
+  ({ kod, cesta, cast_vozu: cesta.split(' › ').at(-1), kontext, popis, poznamka: '', opatreni, trida, strana: null });
+const DEMO_CODES = [
+  c('1', 'Pojezd'),
+  c('1.1', 'Pojezd › Kolo', 'Opotřebení kola (ukázka)'),
+  c('1.1.1', 'Pojezd › Kolo', '– ploché místo na jízdní ploše', 'Vyřadit (A)', '4', 'Opotřebení kola (ukázka)'),
+  c('1.1.2', 'Pojezd › Kolo', '– trhlina na kole', 'Vyřadit (A)', '5', 'Opotřebení kola (ukázka)'),
+  c('2', 'Vypružení'),
+  c('2.1', 'Vypružení › Listová pružnice', 'Poškozená pružnice (ukázka)'),
+  c('2.1.1', 'Vypružení › Listová pružnice', '– prasklý list pružnice', 'K', '4', 'Poškozená pružnice (ukázka)'),
+  c('3', 'Brzda'),
+  c('3.1', 'Brzda › Brzdový špalík', 'Opotřebený brzdový špalík (ukázka)'),
+  c('3.1.1', 'Brzda › Brzdový špalík', '– tloušťka pod limitem', 'K + R1', '3', 'Opotřebený brzdový špalík (ukázka)'),
+  c('3.2', 'Brzda › Ruční brzda', 'Ruční brzda nefunkční (ukázka)', 'R1', '3'),
+  c('5', 'Táhlové a narážecí ústrojí'),
+  c('5.1', 'Táhlové a narážecí ústrojí › Nárazník', 'Poškozený nárazník (ukázka)', 'K', '4'),
+  c('6', 'Vozová skříň'),
+  c('6.1', 'Vozová skříň › Podlaha', 'Poškozená podlaha (ukázka)', 'K', '3'),
+  c('6.10', 'Vozová skříň › Výsypná klapka', 'Klapka nejde uzavřít (ukázka)', 'K', '4'),
+  c('6.10.1', 'Vozová skříň › Výsypná klapka', '– chybí zajištění klapky', 'K', '3', 'Klapka nejde uzavřít (ukázka)'),
+].map((x, i) => ({ ...x, poradi: i + 1 }));
+
 const listeners = new Set();
 let state = load();
 
 function load() {
   try {
     const s = JSON.parse(localStorage.getItem(KEY));
-    if (s?.version === 1) return s;
+    if (s?.version === 2) return s;
   } catch { /* poškozená data → nová ukázka */ }
   const s = seed();
   persist(s);
@@ -96,14 +119,12 @@ function wagonOverview(w) {
     last4: w.number.slice(-4),
     group_name: groupName(w.group_id),
     open_count: open.length,
-    max_severity: Math.max(0, ...open.map((d) => d.severity)),
     resolved_count: ds.length - open.length,
     last_defect_at: ds.map((d) => d.created_at).sort().at(-1) ?? null,
   };
 }
 
-const byUrgency = (a, b) =>
-  b.max_severity - a.max_severity || b.open_count - a.open_count || a.number.localeCompare(b.number);
+const byUrgency = (a, b) => b.open_count - a.open_count || a.number.localeCompare(b.number);
 
 async function defectFeed(d) {
   const atts = state.attachments.filter((a) => a.defect_id === d.id);
@@ -232,13 +253,13 @@ export const api = {
     const d = state.defects.find((x) => x.id === id);
     return d ? defectFeed(d) : null;
   },
-  async createDefect({ wagon_id, severity, description, found_at }, files = [], onProgress) {
+  async createDefect({ wagon_id, description, found_at, defect_code }, files = [], onProgress) {
     const m = requireMember();
     const now = new Date().toISOString();
     const problem = found_at && checkFoundAt(found_at);
     if (problem) throw new Error(problem);
     const d = {
-      id: uid(), wagon_id, severity, description: description.trim(), found_at: found_at ?? now,
+      id: uid(), wagon_id, description: description.trim(), found_at: found_at ?? now, defect_code: defect_code || null,
       created_by: m.id, created_at: now, updated_at: null,
       resolved_at: null, resolved_by: null, resolution_note: null,
     };
@@ -247,12 +268,12 @@ export const api = {
     commit({ newDefect: d, own: true });
     return d;
   },
-  async updateDefect(id, { severity, description, found_at }, newFiles = [], removeIds = [], onProgress) {
+  async updateDefect(id, { description, found_at, defect_code }, newFiles = [], removeIds = [], onProgress) {
     const d = findDefect(id);
     if (!can.edit(me(), d)) throw new Error('Závadu může upravit jen ten, kdo ji vložil, nebo správce.');
     const problem = found_at && checkFoundAt(found_at, d.resolved_at);
     if (problem) throw new Error(problem);
-    Object.assign(d, { severity, description: description.trim(), updated_at: new Date().toISOString() });
+    Object.assign(d, { description: description.trim(), defect_code: defect_code || null, updated_at: new Date().toISOString() });
     if (found_at) d.found_at = found_at;
     await removeFiles(removeIds);
     await storeFiles(id, newFiles, onProgress);
@@ -278,6 +299,12 @@ export const api = {
     Object.assign(findDefect(id), { resolved_at: null, resolved_by: null, resolution_note: null });
     commit();
   },
+
+  // Katalog kódů a předpisy
+  async listCodes() { return DEMO_CODES; },
+  async listRegulations() { return []; },
+  async addRegulation() { throw new Error('V ukázkovém režimu nelze nahrávat předpisy.'); },
+  async deleteRegulation() { throw new Error('V ukázkovém režimu nelze mazat předpisy.'); },
 
   // Komentáře
   async listComments(defectId) {
@@ -412,7 +439,8 @@ function seed() {
       const created = ago(1 + rnd() * 40);
       const resolved = rnd() < 0.35;
       const d = {
-        id: uid(), wagon_id: w.id, severity: 1 + Math.floor(rnd() * 3), description: pick(texts),
+        id: uid(), wagon_id: w.id, description: pick(texts),
+        defect_code: rnd() < 0.5 ? pick(DEMO_CODES.filter((x) => x.opatreni)).kod : null,
         // část závad zapsána zpětně (zjištěno o několik hodin dřív)
         found_at: rnd() < 0.25 ? new Date(Date.parse(created) - (2 + rnd() * 20) * 36e5).toISOString() : created,
         created_by: pick(reporters), created_at: created, updated_at: null,
@@ -431,5 +459,5 @@ function seed() {
       }
     }
   }
-  return { version: 1, profiles, wagons, defects, attachments: [], comments };
+  return { version: 2, profiles, wagons, defects, attachments: [], comments };
 }

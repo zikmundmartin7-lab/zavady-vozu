@@ -6,7 +6,9 @@ import { can, formatNumber } from './model.js';
 import { AppCtx, Lightbox, Loading, Toasts } from './ui.js';
 import { AccountView, LoginView, PendingView, RecoveryView, UsersView } from './views/account.js';
 import { DefectView } from './views/defect.js';
+import { CodesView } from './views/codes.js';
 import { DefectFormView } from './views/form.js';
+import { RegulationsView } from './views/regulations.js';
 import { GroupView, HomeView } from './views/groups.js';
 import { WagonView } from './views/wagon.js';
 
@@ -33,6 +35,8 @@ function Page({ route }) {
     case 'zavada': return html`<${DefectView} id=${route.id} />`;
     case 'nova': return html`<${DefectFormView} params=${route.params} />`;
     case 'upravit': return html`<${DefectFormView} editId=${route.id} params=${route.params} />`;
+    case 'kody': return html`<${CodesView} />`;
+    case 'predpisy': return html`<${RegulationsView} />`;
     case 'ucet': return html`<${AccountView} />`;
     case 'uzivatele': return html`<${UsersView} />`;
     default: return html`<${HomeView} />`;

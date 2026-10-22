@@ -1,7 +1,8 @@
 // Sdílené komponenty a pomocné funkce pro obrazovky.
 
 import { html, createContext, useContext, useEffect, useRef, useState } from '../vendor/preact-htm.js';
-import { SEVERITY, can, digitsOnly, foundAtOf, formatDateTime, plural, splitNumber } from './model.js';
+import { can, digitsOnly, foundAtOf, formatDateTime, plural, splitNumber } from './model.js';
+import { matchRanges } from './codes.js';
 
 export const AppCtx = createContext(null);
 export const useApp = () => useContext(AppCtx);
@@ -52,6 +53,11 @@ const ICONS = {
   left: 'M15 18l-6-6 6-6',
   right: 'M9 18l6-6-6-6',
   history: `M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2`,
+  wagon: `M3 6h18v9H3zM2 15h20M7 7v7M12 7v7M17 7v7${circle(7, 18, 1.8)}${circle(17, 18, 1.8)}`,
+  codes: 'M4 6h2M4 12h2M4 18h2M9 6h11M9 12h11M9 18h11',
+  book: 'M4 4.5A2.5 2.5 0 0 1 6.5 2H20v18H6.5A2.5 2.5 0 0 0 4 22.5zM4 4.5v18M8 7h8M8 11h6',
+  upload: 'M12 16V4M7 9l5-5 5 5M4 16v4h16v-4',
+  file: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h5',
 };
 export const Icon = ({ name, size = 20, class: cls = '' }) => html`
   <svg class="icon ${cls}" width=${size} height=${size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -67,16 +73,54 @@ export const WagonNumber = ({ number, class: cls = '' }) => {
   return html`<span class="wagon-number ${cls}">${head}<b>${tail}</b></span>`;
 };
 
-export function SevChip({ severity, resolved }) {
-  if (resolved) return html`<span class="chip chip-ok"><${Icon} name="check" size=${14} /> Opraveno</span>`;
-  return html`<span class="chip chip-${SEVERITY[severity].color}">${SEVERITY[severity].label} závažnost</span>`;
-}
-
 export function OpenCount({ w }) {
   if (!w.open_count) return html`<span class="count count-ok"><${Icon} name="check" size=${14} /> bez závad</span>`;
-  return html`<span class="count count-${SEVERITY[w.max_severity]?.color}">
-    ${plural(w.open_count, 'závada', 'závady', 'závad')}</span>`;
+  return html`<span class="count count-open">${plural(w.open_count, 'závada', 'závady', 'závad')}</span>`;
 }
+
+// Zvýrazní v textu hledaná slova (bez ohledu na diakritiku)
+export function Highlight({ text, tokens }) {
+  if (!text || !tokens?.length) return text ?? '';
+  const out = [];
+  let pos = 0;
+  for (const [a, b] of matchRanges(text, tokens)) {
+    if (a > pos) out.push(text.slice(pos, a));
+    out.push(html`<mark>${text.slice(a, b)}</mark>`);
+    pos = b;
+  }
+  out.push(text.slice(pos));
+  return out;
+}
+
+// ───── Katalog kódů závad (příloha 9 VSP) ─────
+
+// Katalog se načte jednou (api si ho pamatuje) a sdílí ho všechny obrazovky
+export function useCatalog() {
+  const { api } = useApp();
+  const [catalog, setCatalog] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    api.listCodes().then((c) => alive && setCatalog(c), () => alive && setCatalog([]));
+    return () => { alive = false; };
+  }, []);
+  return catalog;
+}
+
+// Krátké shrnutí kódu z katalogu: „Pojezd › Nalisované obruče kol – Tloušťka menší než …“
+export function CodeSummary({ code, catalog }) {
+  const c = catalog?.find((x) => x.kod === code);
+  if (!c) return null;
+  const text = [c.kontext, c.popis].filter(Boolean).join(' ').replace(/\s+/g, ' ');
+  return html`<div class="code-summary">${c.cesta && html`<b>${c.cesta}</b>`}${c.cesta && text ? ' – ' : ''}${text}</div>`;
+}
+
+// Spodní lišta se záložkami hlavní obrazovky
+export const BottomNav = ({ active }) => html`
+  <nav class="bottom-nav" aria-label="Hlavní nabídka">
+    <a href="#/" class=${active === 'vozy' ? 'active' : ''}><${Icon} name="wagon" size=${22} /><span>Vozy</span></a>
+    <a href="#/kody" class=${active === 'kody' ? 'active' : ''}><${Icon} name="codes" size=${22} /><span>Kódy závad</span></a>
+    <a href="#/predpisy" class=${active === 'predpisy' ? 'active' : ''}><${Icon} name="book" size=${22} /><span>Předpisy</span></a>
+  </nav>`;
 
 export const Loading = () => html`<div class="loading"><span class="spinner"></span> Načítám…</div>`;
 export const ErrorBox = ({ error }) => error ? html`<div class="error-box"><${Icon} name="alert" /> ${error.message ?? String(error)}</div>` : null;
@@ -196,8 +240,9 @@ export function DefectCard({ d, showComments = true }) {
   const [resolving, setResolving] = useState(false);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
+  const catalog = useCatalog();
   const resolved = !!d.resolved_at;
-  const color = resolved ? 'ok' : SEVERITY[d.severity].color;
+  const color = resolved ? 'ok' : 'open';
   const foundAt = foundAtOf(d);
   const backdated = Date.parse(d.created_at) - Date.parse(foundAt) > 15 * 60 * 1000;
 
@@ -226,13 +271,17 @@ export function DefectCard({ d, showComments = true }) {
   return html`
     <article class="defect defect-${color}">
       <div class="defect-head">
-        <${SevChip} severity=${d.severity} resolved=${resolved} />
+        ${resolved
+          ? html`<span class="chip chip-ok"><${Icon} name="check" size=${14} /> Opraveno</span>`
+          : html`<span class="chip chip-open">Neopravená</span>`}
+        ${d.defect_code && html`<span class="chip chip-code" title="Kód závady dle přílohy 9 VSP">kód ${d.defect_code}</span>`}
+        <span class="spacer"></span>
         <span class="muted small" title="Datum a čas zjištění">zjištěno ${formatDateTime(foundAt)}</span>
       </div>
+      ${d.defect_code && html`<${CodeSummary} code=${d.defect_code} catalog=${catalog} />`}
       <p class="defect-text">${d.description}</p>
       <div class="muted small">
         Vložil(a) ${d.created_by_name || 'neznámý uživatel'}${backdated ? ` · zapsáno ${formatDateTime(d.created_at)}` : ''}${d.updated_at ? ' · upraveno' : ''}
-        ${resolved && html` · závažnost: ${SEVERITY[d.severity].label.toLowerCase()}`}
       </div>
 
       ${d.attachments?.length > 0 && html`

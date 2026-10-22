@@ -1,0 +1,158 @@
+// Kódy závad podle přílohy 9 VSP: záložka s hledáním v katalogu a pole pro kód ve formuláři závady.
+
+import { html, useEffect, useMemo, useRef, useState } from '../../vendor/preact-htm.js';
+import { codeOf, highlightTokens, searchCodes, typeCode } from '../codes.js';
+import {
+  BottomNav, Empty, Highlight, Icon, Loading, TopBar, UserButton, useApp, useCatalog,
+} from '../ui.js';
+
+const isCodeQuery = (q) => /^\d/.test(q.trim());
+
+// Jedna položka katalogu: kód, konstrukční část, závada / kritéria, opatření a třída
+export function CodeItem({ c, tokens = [], onPick, picked }) {
+  const body = html`
+    <div class="code-item-head">
+      <span class="code-no">${c.kod}</span>
+      <span class="code-path"><${Highlight} text=${c.cesta} tokens=${tokens} /></span>
+    </div>
+    ${c.kontext && html`<div class="code-context"><${Highlight} text=${c.kontext} tokens=${tokens} /></div>`}
+    ${c.popis && html`<div class="code-text"><${Highlight} text=${c.popis} tokens=${tokens} /></div>`}
+    ${c.poznamka && html`<div class="code-note">Pozn.: <${Highlight} text=${c.poznamka} tokens=${tokens} /></div>`}
+    ${(c.opatreni || c.trida) && html`
+      <div class="code-meta">
+        ${c.opatreni && html`<span>Opatření: <b>${c.opatreni}</b></span>`}
+        ${c.trida && html`<span>Třída závady: <b>${c.trida}</b></span>`}
+      </div>`}`;
+  if (!onPick) return html`<article class="code-item">${body}</article>`;
+  return html`<button type="button" class="code-item ${picked ? 'picked' : ''}" onClick=${() => onPick(c.kod)}>${body}</button>`;
+}
+
+function CodeTextSearch({ value, onInput, placeholder }) {
+  return html`
+    <label class="search-box">
+      <${Icon} name="search" />
+      <input type="search" autocomplete="off" enterkeyhint="search" placeholder=${placeholder}
+        value=${value} onInput=${(e) => onInput(e.currentTarget.value)} />
+      ${value && html`<button type="button" class="icon-btn small" onClick=${(e) => { e.preventDefault(); onInput(''); }}
+        aria-label="Vymazat"><${Icon} name="x" size=${18} /></button>`}
+    </label>`;
+}
+
+// ───── Záložka „Kódy závad“ ─────
+
+export function CodesView() {
+  const { api } = useApp();
+  const catalog = useCatalog();
+  const [q, setQ] = useState('');
+  const results = useMemo(() => searchCodes(catalog, q, isCodeQuery(q) ? 400 : 150), [catalog, q]);
+  const tokens = isCodeQuery(q) ? [] : highlightTokens(q);
+  const sections = (catalog ?? []).filter((c) => !c.kod.includes('.'));
+
+  return html`
+    <${TopBar} title="Kódy závad" sub="Příloha 9 VSP – katalog závad a poškození"><${UserButton} /><//>
+    <main class="page with-nav">
+      ${api.mode === 'demo' && html`
+        <div class="warn"><${Icon} name="alert" size=${16} /> Ukázkový režim: jen pár vymyšlených kódů. V ostré verzi je zde celý katalog přílohy 9 VSP.</div>`}
+      <${CodeTextSearch} value=${q} onInput=${setQ} placeholder="Hledat kód, konstrukční část nebo závadu" />
+      <p class="hint">Hledá se zároveň v konstrukční části i v popisu závady. Můžete zadat i číslo kódu, např. 1.2.</p>
+      ${!catalog && html`<${Loading} />`}
+      ${catalog && catalog.length === 0 && html`<${Empty}>Katalog kódů zatím není nahraný.<//>`}
+      ${catalog && !q.trim() && sections.length > 0 && html`
+        <h2 class="section-title">Části katalogu</h2>
+        <ul class="list">
+          ${sections.map((s) => html`
+            <li key=${s.kod}>
+              <button type="button" class="list-row list-btn" onClick=${() => setQ(`${s.kod}.`)}>
+                <span class="code-no">${s.kod}</span><span class="spacer">${s.cesta}</span>
+                <${Icon} name="right" size=${18} class="muted" />
+              </button>
+            </li>`)}
+        </ul>`}
+      ${q.trim() && catalog && html`
+        <div class="hint">${results.length ? `Nalezeno: ${results.length}${results.length >= 150 && !isCodeQuery(q) ? '+ (upřesněte hledání)' : ''}` : ''}</div>
+        ${results.length === 0 && html`<${Empty}>Nic nenalezeno. Zkuste jiné slovo nebo jen jeho začátek.<//>`}
+        <div class="code-list">
+          ${results.map((r) => html`<${CodeItem} key=${r.c.kod} c=${r.c} tokens=${tokens} />`)}
+        </div>`}
+    </main>
+    <${BottomNav} active="kody" />`;
+}
+
+// ───── Pole pro kód ve formuláři závady ─────
+
+/**
+ * Kód závady: 4 políčka (úrovně kódu, každá 1–2 číslice), tečky se doplňují samy.
+ * Pod polem nabídka kódů, které odpovídají rozepsanému kódu, a hledání podle textu.
+ */
+export function CodePicker({ value, onChange }) {
+  const catalog = useCatalog();
+  const [typed, setTyped] = useState(value ?? '');
+  const [focused, setFocused] = useState(false);
+  const [text, setText] = useState('');
+  const inputRef = useRef();
+
+  // Hodnota nastavená zvenku (předvyplnění při úpravě závady)
+  useEffect(() => {
+    if (codeOf(typed) !== (value ?? '')) setTyped(value ?? '');
+  }, [value]);
+
+  const code = codeOf(typed);
+  const segs = typed ? typed.split('.') : [''];
+  const active = focused ? Math.min(segs.length - 1, 3) : -1;
+  const exact = catalog?.find((c) => c.kod === code);
+  const suggestions = useMemo(
+    () => (code && catalog ? searchCodes(catalog, typed, 8).filter((r) => r.c.kod !== code) : []),
+    [catalog, typed],
+  );
+  const textResults = useMemo(() => (text.trim() ? searchCodes(catalog, text, 30) : []), [catalog, text]);
+  const tokens = isCodeQuery(text) ? [] : highlightTokens(text);
+
+  function set(next) {
+    setTyped(next);
+    onChange(codeOf(next));
+  }
+  function onInput(e) {
+    const next = typeCode(typed, e.currentTarget.value, catalog);
+    e.currentTarget.value = next;
+    set(next);
+  }
+  function pick(kod) {
+    set(kod);
+    setText('');
+  }
+
+  return html`
+    <div class="code-picker">
+      <label class="search-box code-search code-entry">
+        <span class="code" aria-hidden="true">
+          ${[0, 1, 2, 3].map((i) => html`
+            ${i > 0 && html`<span class="code-dot">.</span>`}
+            <span class="code-box ${i === active ? 'active' : ''}">${segs[i] ?? ''}</span>`)}
+        </span>
+        <span class="code-hint">${typed ? '' : 'např. 1.2.2.1'}</span>
+        <input ref=${inputRef} class="code-input" type="text" inputmode="decimal" autocomplete="off"
+          aria-label="Kód závady podle přílohy 9 VSP" value=${typed} onInput=${onInput}
+          onFocus=${() => setFocused(true)} onBlur=${() => setFocused(false)} />
+        ${typed && html`<button type="button" class="icon-btn small clear" aria-label="Smazat kód"
+          onClick=${(e) => { e.preventDefault(); set(''); inputRef.current?.focus(); }}><${Icon} name="x" size=${18} /></button>`}
+      </label>
+
+      ${exact && html`<div class="code-picked"><${CodeItem} c=${exact} /></div>`}
+      ${code && !exact && catalog?.length > 0 && suggestions.length === 0 && html`
+        <div class="warn"><${Icon} name="alert" size=${16} /> Kód ${code} v katalogu přílohy 9 VSP není.</div>`}
+      ${suggestions.length > 0 && html`
+        <div class="hint">${exact ? 'Podrobnější kódy:' : 'Pokračujte v psaní, nebo vyberte:'}</div>
+        <div class="code-list compact">
+          ${suggestions.map((r) => html`<${CodeItem} key=${r.c.kod} c=${r.c} onPick=${pick} />`)}
+        </div>`}
+
+      <div class="code-text-search">
+        <${CodeTextSearch} value=${text} onInput=${setText} placeholder="Najít kód podle konstrukční části nebo závady" />
+      </div>
+      ${text.trim() && catalog && html`
+        ${textResults.length === 0 && html`<${Empty}>Nic nenalezeno.<//>`}
+        <div class="code-list compact">
+          ${textResults.map((r) => html`<${CodeItem} key=${r.c.kod} c=${r.c} tokens=${tokens} onPick=${pick} picked=${r.c.kod === code} />`)}
+        </div>`}
+    </div>`;
+}

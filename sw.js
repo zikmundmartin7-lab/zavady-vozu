@@ -1,10 +1,11 @@
 // Service worker: offline záloha aplikace a push upozornění na nové závady.
 
-const CACHE = 'zavady-v7';
+const CACHE = 'zavady-v8';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
-  'js/app.js', 'js/config.js', 'js/model.js', 'js/ui.js', 'js/api/index.js', 'js/api/demo.js', 'js/api/supabase.js',
-  'js/views/account.js', 'js/views/defect.js', 'js/views/form.js', 'js/views/groups.js', 'js/views/wagon.js',
+  'js/app.js', 'js/config.js', 'js/model.js', 'js/codes.js', 'js/ui.js', 'js/api/index.js', 'js/api/demo.js', 'js/api/supabase.js',
+  'js/views/account.js', 'js/views/codes.js', 'js/views/defect.js', 'js/views/form.js', 'js/views/groups.js',
+  'js/views/regulations.js', 'js/views/wagon.js',
   'vendor/preact-htm.js', 'vendor/supabase.js', 'icons/icon.svg', 'icons/icon-192.png', 'icons/badge-96.png',
 ];
 

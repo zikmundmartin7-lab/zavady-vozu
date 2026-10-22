@@ -1,11 +1,13 @@
-// Formulář nové závady / úpravy závady (číslo vozu, závažnost, popis, fotky a videa).
+// Formulář nové závady / úpravy závady (číslo vozu, kód závady, popis, datum zjištění, fotky a videa).
 
 import { html, useEffect, useMemo, useState } from '../../vendor/preact-htm.js';
+import { CODE_RE } from '../codes.js';
 import {
-  MAX_VIDEO_MB, SEVERITY, can, checkDigit, checkFoundAt, digitsOnly, foundAtOf, formatNumber, isCompleteNumber,
+  MAX_VIDEO_MB, can, checkDigit, checkFoundAt, digitsOnly, foundAtOf, formatNumber, isCompleteNumber,
   isValidCheckDigit, toLocalInput,
 } from '../model.js';
 import { Empty, ErrorBox, Icon, Loading, TopBar, WagonNumber, replace, useApp, useLoad } from '../ui.js';
+import { CodePicker } from './codes.js';
 
 function FilePicker({ onFiles }) {
   const pick = (e) => {
@@ -43,7 +45,7 @@ export function DefectFormView({ editId, params }) {
   const [number, setNumber] = useState(digitsOnly(params.get('cislo') ?? ''));
   const [found, setFound] = useState(undefined); // undefined = nehledáno, null = nový vůz
   const [groupId, setGroupId] = useState(Number(params.get('skupina')) || null);
-  const [severity, setSeverity] = useState(null);
+  const [code, setCode] = useState('');
   const [description, setDescription] = useState('');
   const [foundAt, setFoundAt] = useState(() => toLocalInput(new Date()));
   const [initialFoundAt, setInitialFoundAt] = useState(null); // při úpravě: původní hodnota
@@ -56,7 +58,7 @@ export function DefectFormView({ editId, params }) {
   useEffect(() => {
     const d = existingDefect.data;
     if (d) {
-      setSeverity(d.severity);
+      setCode(d.defect_code ?? '');
       setDescription(d.description);
       setFoundAt(toLocalInput(foundAtOf(d)));
       setInitialFoundAt(toLocalInput(foundAtOf(d)));
@@ -102,7 +104,7 @@ export function DefectFormView({ editId, params }) {
         if (found === undefined) throw new Error('Ověřuji číslo vozu, zkuste to za okamžik znovu.');
         if (!found && !groupId) throw new Error('Vyberte skupinu, do které nový vůz patří.');
       }
-      if (!severity) throw new Error('Vyberte závažnost závady.');
+      if (code && !CODE_RE.test(code)) throw new Error('Kód závady má tvar např. 1.2 nebo 1.2.2.1 (až 4 úrovně).');
       if (!description.trim()) throw new Error('Popište závadu.');
       const foundProblem = checkFoundAt(foundAt, editId ? existingDefect.data.resolved_at : null);
       if (foundProblem) throw new Error(foundProblem);
@@ -111,7 +113,7 @@ export function DefectFormView({ editId, params }) {
 
       if (editId) {
         setBusy('Ukládám…');
-        await api.updateDefect(editId, { severity, description, found_at }, files, removeIds,
+        await api.updateDefect(editId, { description, found_at, defect_code: code }, files, removeIds,
           (i, n) => setBusy(`Nahrávám přílohu ${i}/${n}…`));
         toast('Závada upravena.');
         replace(`#/vuz/${existingDefect.data.wagon_id}`);
@@ -119,7 +121,7 @@ export function DefectFormView({ editId, params }) {
       }
       setBusy('Ukládám…');
       if (!wagon) wagon = found ?? await api.createWagon(number, groupId);
-      await api.createDefect({ wagon_id: wagon.id, severity, description, found_at }, files,
+      await api.createDefect({ wagon_id: wagon.id, description, found_at, defect_code: code }, files,
         (i, n) => setBusy(`Nahrávám přílohu ${i}/${n}…`));
       toast('Závada uložena. Ostatní uživatelé dostanou upozornění.');
       replace(`#/vuz/${wagon.id}`);
@@ -170,12 +172,8 @@ export function DefectFormView({ editId, params }) {
         </section>
 
         <section class="card">
-          <h2 class="field-label">Závažnost</h2>
-          <div class="severity-select">
-            ${[1, 2, 3].map((s) => html`
-              <button type="button" class="sev-btn sev-btn-${SEVERITY[s].color} ${severity === s ? 'active' : ''}"
-                onClick=${() => setSeverity(s)} aria-pressed=${severity === s}>${SEVERITY[s].label}</button>`)}
-          </div>
+          <h2 class="field-label">Kód závady dle přílohy 9 VSP <span class="optional">nepovinné</span></h2>
+          <${CodePicker} value=${code} onChange=${setCode} />
         </section>
 
         <section class="card">

@@ -3,7 +3,7 @@
 import { html, useState } from '../../vendor/preact-htm.js';
 import { can, checkDigit, formatNumber, foundAtOf, isValidCheckDigit, plural } from '../model.js';
 import {
-  DefectCard, Empty, ErrorBox, Icon, Loading, TopBar, WagonNumber, replace, useApp, useLoad,
+  BottomNav, DefectCard, Empty, ErrorBox, Icon, Loading, TopBar, WagonNumber, replace, useApp, useLoad,
 } from '../ui.js';
 
 export function WagonView({ id }) {
@@ -23,7 +23,7 @@ export function WagonView({ id }) {
 
   const all = defects.data ?? [];
   const open = all.filter((d) => !d.resolved_at)
-    .sort((a, b) => b.severity - a.severity || Date.parse(foundAtOf(b)) - Date.parse(foundAtOf(a)));
+    .sort((a, b) => Date.parse(foundAtOf(b)) - Date.parse(foundAtOf(a)));
   const resolved = all.filter((d) => d.resolved_at).sort((a, b) => b.resolved_at.localeCompare(a.resolved_at));
 
   async function changeGroup(e) {
@@ -45,7 +45,7 @@ export function WagonView({ id }) {
 
   return html`
     <${TopBar} back="#/skupina/${w.group_id}" title=${formatNumber(w.number)} sub=${w.group_name} />
-    <main class="page">
+    <main class="page with-nav">
       <section class="card wagon-card">
         <${WagonNumber} number=${w.number} class="big" />
         <div class="wagon-meta">
@@ -81,5 +81,6 @@ export function WagonView({ id }) {
           <button class="btn btn-ghost danger" onClick=${removeWagon}><${Icon} name="trash" size=${18} /> Smazat vůz</button>
           <span class="muted small">${plural(all.length, 'závada', 'závady', 'závad')} celkem</span>
         </div>`}
-    </main>`;
+    </main>
+    <${BottomNav} active="vozy" />`;
 }

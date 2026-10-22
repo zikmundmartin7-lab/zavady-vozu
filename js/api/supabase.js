@@ -14,6 +14,8 @@ await new Promise((res, rej) => {
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const BUCKET = 'attachments';
+const REG_BUCKET = 'predpisy';
+let catalogPromise = null;
 const appUrl = () => location.origin + location.pathname;
 
 const MESSAGES = [
@@ -67,9 +69,10 @@ async function uploadFiles(defectId, files, onProgress) {
   }
 }
 
-async function removeStorage(paths) {
-  if (paths.length) check(await sb.storage.from(BUCKET).remove(paths));
+async function removeFrom(bucket, paths) {
+  if (paths.length) check(await sb.storage.from(bucket).remove(paths));
 }
+const removeStorage = (paths) => removeFrom(BUCKET, paths);
 
 function base64UrlToBytes(s) {
   const b = atob((s + '='.repeat((4 - (s.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
@@ -119,13 +122,11 @@ export const api = {
     query = q.length <= 4 ? query.like('last4', `${q}%`) : query.like('number', `%${q}%`);
     if (groupId) query = query.eq('group_id', groupId);
     return check(await query
-      .order('max_severity', { ascending: false }).order('open_count', { ascending: false })
-      .order('number').limit(50));
+      .order('open_count', { ascending: false }).order('number').limit(50));
   },
   async listWagons(groupId) {
     return check(await sb.from('wagon_overview').select('*').eq('group_id', groupId)
-      .order('max_severity', { ascending: false }).order('open_count', { ascending: false })
-      .order('number'));
+      .order('open_count', { ascending: false }).order('number'));
   },
   async getWagon(id) {
     return check(await sb.from('wagon_overview').select('*').eq('id', id).maybeSingle());
@@ -158,17 +159,18 @@ export const api = {
     const d = check(await sb.from('defect_feed').select('*').eq('id', id).maybeSingle());
     return d ? (await withUrls([d]))[0] : null;
   },
-  async createDefect({ wagon_id, severity, description, found_at }, files = [], onProgress) {
+  async createDefect({ wagon_id, description, found_at, defect_code }, files = [], onProgress) {
     const d = check(await sb.from('defects').insert({
-      wagon_id, severity, description: description.trim(), found_at, created_by: await currentUserId(),
+      wagon_id, description: description.trim(), found_at, defect_code: defect_code || null,
+      created_by: await currentUserId(),
     }).select().single());
     await uploadFiles(d.id, files, onProgress);
     // Rozeslání upozornění ostatním (Edge Function notify-new-defect). Chyba nevadí – závada je uložená.
     sb.functions.invoke('notify-new-defect', { body: { defect_id: d.id } }).catch(() => {});
     return d;
   },
-  async updateDefect(id, { severity, description, found_at }, newFiles = [], removeIds = [], onProgress) {
-    const patch = { severity, description: description.trim(), ...(found_at ? { found_at } : {}) };
+  async updateDefect(id, { description, found_at, defect_code }, newFiles = [], removeIds = [], onProgress) {
+    const patch = { description: description.trim(), defect_code: defect_code || null, ...(found_at ? { found_at } : {}) };
     check(await sb.from('defects').update(patch).eq('id', id));
     if (removeIds.length) {
       const atts = check(await sb.from('attachments').select('path').in('id', removeIds));
@@ -188,6 +190,34 @@ export const api = {
   },
   async reopenDefect(id) {
     check(await sb.from('defects').update({ resolved_at: null, resolution_note: null }).eq('id', id));
+  },
+
+  // Katalog kódů závad (příloha 9 VSP) – načte se jednou za spuštění aplikace
+  listCodes() {
+    catalogPromise ??= sb.from('defect_codes')
+      .select('kod, poradi, cast_vozu, cesta, kontext, popis, poznamka, opatreni, trida, strana')
+      .order('poradi').limit(5000)
+      .then(check)
+      .catch((e) => { catalogPromise = null; throw e; });
+    return catalogPromise;
+  },
+
+  // Předpisy (PDF v soukromém úložišti, odkazy platí hodinu)
+  async listRegulations() {
+    const rows = check(await sb.from('regulations').select('*').order('title'));
+    if (!rows.length) return rows;
+    const signed = check(await sb.storage.from(REG_BUCKET).createSignedUrls(rows.map((r) => r.path), 3600));
+    const urls = new Map(signed.map((x) => [x.path, x.signedUrl]));
+    return rows.map((r) => ({ ...r, url: urls.get(r.path) ?? '' }));
+  },
+  async addRegulation(title, file) {
+    const path = `${uid()}.pdf`;
+    check(await sb.storage.from(REG_BUCKET).upload(path, file, { contentType: 'application/pdf' }));
+    check(await sb.from('regulations').insert({ title: title.trim(), path, size_bytes: file.size }));
+  },
+  async deleteRegulation(r) {
+    check(await sb.from('regulations').delete().eq('id', r.id));
+    await removeFrom(REG_BUCKET, [r.path]).catch(() => {});
   },
 
   // Komentáře
