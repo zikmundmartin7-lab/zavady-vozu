@@ -6,8 +6,10 @@ Aplikace pro evidenci závad železničních vozů. Běží v prohlížeči na p
 
 - **Úvodní obrazovka:** skupiny vozů (Chopry, SA, UA, Vapy/Fals, Trakce/Zetky, Plošiňáky/Res/Smmp, Ostatní). Červený odznak ukazuje počet otevřených závad ve skupině.
 - **Hledání podle posledního čtyřčíslí**: napíšou se jen 4 číslice, pomlčka před kontrolní číslicí je předvyplněná (`017-4`). Funguje na úvodní obrazovce i uvnitř skupiny a výsledky se ukazují už během psaní. Vložené celé číslo vozu se zkrátí na poslední 4 číslice.
-- **Detail vozu:** aktivní závady barevně podle závažnosti (žlutá, oranžová, červená), s datem, textem, fotkami a videi. Opravené závady jsou zelené a skryté pod tlačítkem **Historie oprav**.
+- **Detail vozu:** aktivní závady (oranžově) s kódem, datem, textem, fotkami a videi. Opravené závady jsou zelené a skryté pod tlačítkem **Historie oprav**.
 - **Nová závada:** číslo vozu ve formátu `XX XX XXXX XXX-X` s kontrolou kontrolní číslice (UIC, Luhnův algoritmus). Nový vůz se založí automaticky, stačí vybrat skupinu. Fotky lze vyfotit, video natočit nebo obojí vybrat z galerie. Fotky se před nahráním zmenší.
+- **Kód závady podle přílohy 9 VSP** (nepovinný): 4 políčka pro úrovně kódu (např. 1.2.2.1, 6.1.1.12), tečky se doplňují samy. Pod polem se nabízí odpovídající kódy z katalogu a hledání podle konstrukční části i popisu závady.
+- **Záložky na hlavní obrazovce:** **Vozy**, **Kódy závad** (hledání v katalogu jedním polem – konstrukční část i závada najednou, i skloněné tvary slov) a **Předpisy** (PDF, nahrává správce, vidí jen schválení uživatelé).
 - **Datum a čas zjištění:** předvyplní se aktuální čas, ale jde zadat i zpětně (ne do budoucna). Měnit ho smí autor závady nebo správce. U zpětně zapsané závady karta ukazuje i skutečný čas zápisu.
 - **Komentáře** k závadě ve stylu WhatsAppu, s živými aktualizacemi.
 - **Upozornění na novou závadu** přijde všem ostatním uživatelům jako push notifikace v telefonu i při zavřené aplikaci. Kdo má aplikaci otevřenou, uvidí upozornění přímo v ní.
@@ -83,7 +85,8 @@ js/api/supabase.js | demo.js              ostrá data | ukázková data v prohl�
 js/ui.js, js/views/*.js                   obrazovky (Preact + htm, bez sestavování)
 supabase/schema.sql                       tabulky, oprávnění (RLS), úložiště
 supabase/functions/notify-new-defect/     rozesílání push upozornění
-supabase/oprava_*.sql, migrace_*.sql      jednorázové opravy a úpravy databáze (už provedené)
+supabase/oprava_*.sql, migrace_*.sql      jednorázové opravy a úpravy databáze
+tools/katalog_vsp9.py                     převod katalogu závad z PDF přílohy 9 VSP (výstup do private/, mimo GitHub)
 navod.html                                návod k instalaci, Android i iPhone (QR: tools/qr.py)
 tools/ikony.py, tools/vapid.html          ikony aplikace, generátor klíčů
 .github/workflows/keep-alive.yml          udržení projektu Supabase vzhůru

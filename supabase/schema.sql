@@ -103,11 +103,13 @@ create table public.wagons (
 create index wagons_last4_idx on public.wagons (last4 text_pattern_ops);
 create index wagons_group_idx on public.wagons (group_id);
 
--- severity: 1 = žlutá (nízká), 2 = oranžová (střední), 3 = červená (vysoká)
+-- severity: dřívější závažnost (1–3) – aplikace ji už nepoužívá, zůstává jen kvůli starším záznamům
+-- defect_code: nepovinný kód závady podle přílohy 9 VSP (až 4 úrovně, např. 1.2.2.1 nebo 6.1.1.12)
 create table public.defects (
   id               uuid primary key default gen_random_uuid(),
   wagon_id         uuid not null references public.wagons on delete cascade,
-  severity         smallint not null check (severity between 1 and 3),
+  severity         smallint check (severity between 1 and 3),
+  defect_code      text check (defect_code ~ '^[0-9]{1,2}([.][0-9]{1,2}){0,3}$'),
   description      text not null check (length(trim(description)) > 0),
   found_at         timestamptz not null default now(),  -- datum a čas zjištění (lze zadat i zpětně)
   created_by       uuid references public.profiles on delete set null default auth.uid(),
@@ -121,7 +123,7 @@ create index defects_wagon_idx on public.defects (wagon_id);
 create index defects_open_idx on public.defects (wagon_id) where resolved_at is null;
 
 -- Kdo smí co měnit:
---   text, závažnost, datum zjištění → autor závady nebo správce
+--   text, kód závady, datum zjištění → autor závady nebo správce
 --   opraveno / vrátit               → autor závady, opravář nebo správce
 -- Datum zjištění nesmí být v budoucnosti (rezerva 5 min na nepřesné hodiny v telefonu)
 -- a u opravené závady nesmí být pozdější než oprava. Čas vložení a čas opravy určuje server.
@@ -149,6 +151,7 @@ declare
 begin
   content_changed := new.description is distinct from old.description
                      or new.severity is distinct from old.severity
+                     or new.defect_code is distinct from old.defect_code
                      or new.found_at is distinct from old.found_at;
   resolution_changed := new.resolved_at is distinct from old.resolved_at
                         or new.resolution_note is distinct from old.resolution_note;
@@ -247,6 +250,33 @@ select c.*, p.full_name as author_name
 from public.comments c
 left join public.profiles p on p.id = c.author_id;
 
+-- ───────────────────────── Katalog kódů závad a předpisy ─────────────────────────
+
+-- Katalog závad a poškození (Dodatek 1 přílohy 9 VSP). Plní se zvlášť skriptem z tools/katalog_vsp9.py,
+-- text katalogu není veřejný – vidí ho jen přihlášení a schválení uživatelé.
+create table if not exists public.defect_codes (
+  kod        text primary key,
+  poradi     integer not null,
+  cast_vozu  text,          -- konstrukční část (vlastní název u kódu)
+  cesta      text,          -- konstrukční část včetně nadřazených, např. „Pojezd › Nalisované obruče kol“
+  kontext    text,          -- nadpis z nadřazeného kódu, když je u kódu jen kritérium
+  popis      text,          -- závady a poškození / kritéria / upozornění
+  poznamka   text,
+  opatreni   text,
+  trida      text,          -- třída závady
+  strana     smallint       -- strana v PDF přílohy 9
+);
+
+-- Předpisy (PDF v soukromém úložišti „predpisy“)
+create table if not exists public.regulations (
+  id          uuid primary key default gen_random_uuid(),
+  title       text not null check (length(trim(title)) > 0),
+  path        text not null unique,
+  size_bytes  bigint,
+  created_by  uuid references public.profiles on delete set null default auth.uid(),
+  created_at  timestamptz not null default now()
+);
+
 -- ───────────────────────── Oprávnění (Row Level Security) ─────────────────────────
 
 alter table public.profiles           enable row level security;
@@ -256,6 +286,8 @@ alter table public.defects            enable row level security;
 alter table public.attachments        enable row level security;
 alter table public.comments           enable row level security;
 alter table public.push_subscriptions enable row level security;
+alter table public.defect_codes       enable row level security;
+alter table public.regulations        enable row level security;
 
 create policy "profil: vlastní nebo člen vidí" on public.profiles
   for select to authenticated using (id = auth.uid() or public.is_member());
@@ -308,6 +340,23 @@ create policy "komentáře: mazání autor nebo správce" on public.comments
 create policy "push: vlastní odběry" on public.push_subscriptions
   for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
 
+drop policy if exists "kódy závad: čtení" on public.defect_codes;
+create policy "kódy závad: čtení" on public.defect_codes
+  for select to authenticated using (public.is_member());
+
+drop policy if exists "předpisy: čtení" on public.regulations;
+create policy "předpisy: čtení" on public.regulations
+  for select to authenticated using (public.is_member());
+drop policy if exists "předpisy: přidání správce" on public.regulations;
+create policy "předpisy: přidání správce" on public.regulations
+  for insert to authenticated with check (public.is_admin());
+drop policy if exists "předpisy: úprava správce" on public.regulations;
+create policy "předpisy: úprava správce" on public.regulations
+  for update to authenticated using (public.is_admin());
+drop policy if exists "předpisy: mazání správce" on public.regulations;
+create policy "předpisy: mazání správce" on public.regulations
+  for delete to authenticated using (public.is_admin());
+
 -- ───────────────────────── Úložiště fotek a videí ─────────────────────────
 -- Soukromý bucket, max. 50 MB na soubor (limit bezplatného tarifu).
 
@@ -321,6 +370,21 @@ create policy "soubory: nahrání členové" on storage.objects
 create policy "soubory: mazání vlastník nebo správce" on storage.objects
   for delete to authenticated using (
     bucket_id = 'attachments' and (owner = auth.uid() or public.is_admin()));
+
+-- Předpisy: soukromý bucket jen pro PDF; číst smí schválení uživatelé, nahrávat a mazat správce.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('predpisy', 'predpisy', false, 52428800, array['application/pdf'])
+on conflict (id) do nothing;
+
+drop policy if exists "předpisy: čtení členové" on storage.objects;
+create policy "předpisy: čtení členové" on storage.objects
+  for select to authenticated using (bucket_id = 'predpisy' and public.is_member());
+drop policy if exists "předpisy: nahrání správce" on storage.objects;
+create policy "předpisy: nahrání správce" on storage.objects
+  for insert to authenticated with check (bucket_id = 'predpisy' and public.is_admin());
+drop policy if exists "předpisy: mazání správce" on storage.objects;
+create policy "předpisy: mazání správce" on storage.objects
+  for delete to authenticated using (bucket_id = 'predpisy' and public.is_admin());
 
 -- ───────────────────────── Živé aktualizace ─────────────────────────
 
