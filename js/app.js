@@ -35,7 +35,7 @@ function Page({ route }) {
     case 'zavada': return html`<${DefectView} id=${route.id} />`;
     case 'nova': return html`<${DefectFormView} params=${route.params} />`;
     case 'upravit': return html`<${DefectFormView} editId=${route.id} params=${route.params} />`;
-    case 'kody': return html`<${CodesView} />`;
+    case 'kody': return html`<${CodesView} params=${route.params} />`;
     case 'predpisy': return html`<${RegulationsView} />`;
     case 'ucet': return html`<${AccountView} />`;
     case 'uzivatele': return html`<${UsersView} />`;
@@ -53,6 +53,7 @@ function App() {
   const [media, setMedia] = useState(null);
   const [recovery, setRecovery] = useState(false);
   const [installPrompt, setInstallPrompt] = useState(null);
+  const [tabReset, setTabReset] = useState(0);
 
   const reloadMe = () => api.getProfile().then(setMe, () => setMe(null));
   const refresh = () => setVersion((v) => v + 1);
@@ -97,6 +98,7 @@ function App() {
   const ctx = {
     api, me, version, refresh, toast, reloadMe, installPrompt,
     openMedia: (items, index) => setMedia({ items, index }),
+    resetTab: () => { setTabReset((n) => n + 1); scrollTo(0, 0); },
   };
 
   let content;
@@ -104,7 +106,7 @@ function App() {
   else if (recovery && me) content = html`<${RecoveryView} onDone=${() => setRecovery(false)} />`;
   else if (!me) content = html`<${LoginView} />`;
   else if (!can.use(me)) content = html`<${PendingView} />`;
-  else content = html`<${Page} key=${route.key} route=${route} />`;
+  else content = html`<${Page} key=${`${route.key}|${tabReset}`} route=${route} />`;
 
   return html`
     <${AppCtx.Provider} value=${ctx}>

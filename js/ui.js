@@ -121,12 +121,21 @@ export function CodeSummary({ code, catalog }) {
 }
 
 // Spodní lišta se záložkami hlavní obrazovky
-export const BottomNav = ({ active }) => html`
-  <nav class="bottom-nav" aria-label="Hlavní nabídka">
-    <a href="#/" class=${active === 'vozy' ? 'active' : ''}><${Icon} name="wagon" size=${22} /><span>Vozy</span></a>
-    <a href="#/kody" class=${active === 'kody' ? 'active' : ''}><${Icon} name="codes" size=${22} /><span>Kódy závad</span></a>
-    <a href="#/predpisy" class=${active === 'predpisy' ? 'active' : ''}><${Icon} name="book" size=${22} /><span>Předpisy</span></a>
-  </nav>`;
+// Klepnutí na záložku, která je už otevřená na své úvodní obrazovce, ji vrátí na začátek
+// (vymaže hledání, posune nahoru). Z vnořené stránky (skupina, vůz, část katalogu) vede na úvod záložky.
+export function BottomNav({ active }) {
+  const { resetTab } = useApp();
+  const tab = (key, href, icon, label) => html`
+    <a href=${href} class=${active === key ? 'active' : ''}
+      onClick=${(e) => { if ((location.hash || '#/') === href) { e.preventDefault(); resetTab(); } }}>
+      <${Icon} name=${icon} size=${22} /><span>${label}</span></a>`;
+  return html`
+    <nav class="bottom-nav" aria-label="Hlavní nabídka">
+      ${tab('vozy', '#/', 'wagon', 'Vozy')}
+      ${tab('kody', '#/kody', 'codes', 'Kódy závad')}
+      ${tab('predpisy', '#/predpisy', 'book', 'Předpisy')}
+    </nav>`;
+}
 
 export const Loading = () => html`<div class="loading"><span class="spinner"></span> Načítám…</div>`;
 export const ErrorBox = ({ error }) => error ? html`<div class="error-box"><${Icon} name="alert" /> ${error.message ?? String(error)}</div>` : null;

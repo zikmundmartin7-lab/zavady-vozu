@@ -95,7 +95,34 @@ function ImageUpload({ count }) {
 
 // ───── Záložka „Kódy závad“ ─────
 
-export function CodesView() {
+// Jedna část katalogu (např. 1 Pojezd) jako samostatná stránka – má šipku zpět,
+// protože na iPhonu v aplikaci z plochy chybí tlačítko Zpět prohlížeče.
+function CodeSectionView({ section }) {
+  const catalog = useCatalog();
+  const images = useCodeImages();
+  const head = catalog?.find((c) => c.kod === section);
+  const list = (catalog ?? []).filter((c) => c.kod === section || c.kod.startsWith(`${section}.`));
+  return html`
+    <${TopBar} back="#/kody" title=${head ? `${head.kod} ${head.cesta}` : `Část ${section}`}
+      sub=${catalog ? `${list.length} kódů` : ''}><${UserButton} /><//>
+    <main class="page with-nav">
+      ${!catalog && html`<${Loading} />`}
+      ${catalog && list.length === 0 && html`<${Empty}>Tato část katalogu neexistuje.<//>`}
+      <div class="code-list">
+        ${list.map((c) => html`<${CodeItem} key=${c.kod} c=${c} images=${images} />`)}
+      </div>
+      ${catalog && list.length > 0 && html`<a class="btn btn-ghost block toggle" href="#/kody"><${Icon} name="back" /> Zpět na kódy závad</a>`}
+    </main>
+    <${BottomNav} active="kody" />`;
+}
+
+export function CodesView({ params }) {
+  const section = params?.get('sekce');
+  if (section) return html`<${CodeSectionView} section=${section} />`;
+  return html`<${CodesSearchView} />`;
+}
+
+function CodesSearchView() {
   const { api, me } = useApp();
   const catalog = useCatalog();
   const images = useCodeImages();
@@ -119,10 +146,10 @@ export function CodesView() {
         <ul class="list">
           ${sections.map((s) => html`
             <li key=${s.kod}>
-              <button type="button" class="list-row list-btn" onClick=${() => setQ(`${s.kod}.`)}>
+              <a class="list-row list-btn" href="#/kody?sekce=${s.kod}">
                 <span class="code-no">${s.kod}</span><span class="spacer">${s.cesta}</span>
                 <${Icon} name="right" size=${18} class="muted" />
-              </button>
+              </a>
             </li>`)}
         </ul>`}
       ${q.trim() && catalog && html`
