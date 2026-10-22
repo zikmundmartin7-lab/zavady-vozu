@@ -198,6 +198,8 @@ export const api = {
       .select('kod, poradi, cast_vozu, cesta, kontext, popis, poznamka, opatreni, trida, strana')
       .order('poradi').limit(5000)
       .then(check)
+      // prázdný výsledek (např. před přihlášením) si nepamatovat – příště se načte znovu
+      .then((rows) => { if (!rows.length) catalogPromise = null; return rows; })
       .catch((e) => { catalogPromise = null; throw e; });
     return catalogPromise;
   },
