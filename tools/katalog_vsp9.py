@@ -3,6 +3,8 @@
 Výstup (do složky private/, která se NEnahrává na GitHub – text katalogu není náš):
   private/katalog_vsp9.json   – kontrolní výpis
   private/katalog_vsp9.sql    – vložení do tabulky defect_codes v Supabase (spustit v SQL Editoru)
+  private/katalog_obrazky/    – obrázky z katalogu, název = kód_pořadí.png (např. 1.3.3_1.png);
+                                nahrávají se v aplikaci (Kódy závad → Obrázky katalogu, jen správce)
 
 Spuštění:  python3 tools/katalog_vsp9.py "cesta/k/VSP Příloha 9.pdf"
 Potřebuje: pip install --user pdfplumber
@@ -40,8 +42,13 @@ def group_lines(words, tol=2.5):
     return rows
 
 
+IMG_DIR = OUT / 'katalog_obrazky'
+HEADER_BOTTOM = 60      # logo v záhlaví každé stránky se vynechává
+
+
 def extract(pdf_path):
     entries, last = [], None
+    images = []             # (kód-záznam, page, bbox)
     with pdfplumber.open(pdf_path) as pdf:
         for pno in range(FIRST_PAGE, LAST_PAGE + 1):
             page = pdf.pages[pno - 1]
@@ -112,10 +119,35 @@ def extract(pdf_path):
                     t = target(l['top'])
                     if t is not None:
                         t[key].append(l['text'])
+            # Obrázky: patří kódu, v jehož řádku začínají (podle horní hrany)
+            for im in page.images:
+                if im['top'] < HEADER_BOTTOM or (cut is not None and im['top'] >= cut):
+                    continue
+                owner_entry = target(im['top'] + 2)
+                if owner_entry is not None:
+                    images.append((owner_entry, page, (im['x0'], im['top'], im['x1'], im['bottom'])))
             entries.extend(page_entries)
             if page_entries:
                 last = page_entries[-1]
+        save_images(images)
     return entries
+
+
+def save_images(images):
+    """Vykreslí oblast každého obrázku (i s případnými popisky přes něj) do PNG."""
+    IMG_DIR.mkdir(parents=True, exist_ok=True)
+    for old in IMG_DIR.glob('*'):
+        old.unlink()
+    counter = {}
+    for entry, page, (x0, top, x1, bottom) in images:
+        kod = entry['kod'].rstrip('*')
+        counter[kod] = counter.get(kod, 0) + 1
+        name = f"{kod}_{counter[kod]}.png"
+        box = (max(0, x0 - 2), max(0, top - 2), min(page.width, x1 + 2), min(page.height, bottom + 2))
+        img = page.crop(box).to_image(resolution=200).original.convert('RGB')
+        img = img.quantize(colors=128).convert('RGB') if img.width * img.height > 0 else img
+        img.save(IMG_DIR / name, optimize=True)
+        entry.setdefault('obrazky', []).append(name)
 
 
 def tidy_text(lines):
@@ -153,6 +185,7 @@ def build(entries):
             'opatreni': ' '.join(' '.join(e['opatreni']).split()),
             'trida': ' / '.join(t.strip() for t in e['trida'] if t.strip()),
             'strana': e['strana'],
+            'obrazky': e.get('obrazky', []),
         }
         by_code[kod] = item
         result.append(item)

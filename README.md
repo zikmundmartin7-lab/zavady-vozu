@@ -9,6 +9,7 @@ Aplikace pro evidenci závad železničních vozů. Běží v prohlížeči na p
 - **Detail vozu:** aktivní závady (oranžově) s kódem, datem, textem, fotkami a videi. Opravené závady jsou zelené a skryté pod tlačítkem **Historie oprav**.
 - **Nová závada:** číslo vozu ve formátu `XX XX XXXX XXX-X` s kontrolou kontrolní číslice (UIC, Luhnův algoritmus). Nový vůz se založí automaticky, stačí vybrat skupinu. Fotky lze vyfotit, video natočit nebo obojí vybrat z galerie. Fotky se před nahráním zmenší.
 - **Kód závady podle přílohy 9 VSP** (nepovinný): 4 políčka pro úrovně kódu (např. 1.2.2.1, 6.1.1.12), tečky se doplňují samy. Pod polem se nabízí odpovídající kódy z katalogu a hledání podle konstrukční části i popisu závady.
+- **Obrázky z katalogu** (náčrtky z přílohy 9 VSP) se ukazují u kódů při hledání i ve formuláři; klepnutím se zvětší. Nahrává je správce v záložce Kódy závad (soubory `kód_pořadí.png` z `tools/katalog_vsp9.py`).
 - **Záložky na hlavní obrazovce:** **Vozy**, **Kódy závad** (hledání v katalogu jedním polem – konstrukční část i závada najednou, i skloněné tvary slov) a **Předpisy** (PDF, nahrává správce, vidí jen schválení uživatelé).
 - **Datum a čas zjištění:** předvyplní se aktuální čas, ale jde zadat i zpětně (ne do budoucna). Měnit ho smí autor závady nebo správce. U zpětně zapsané závady karta ukazuje i skutečný čas zápisu.
 - **Komentáře** k závadě ve stylu WhatsAppu, s živými aktualizacemi.

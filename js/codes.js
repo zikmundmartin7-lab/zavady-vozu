@@ -142,3 +142,19 @@ export function typeCode(prev, raw, catalog) {
 }
 
 export const codeOf = (typed) => typed.replace(/\.$/, '');
+
+// ───── Obrázky z katalogu ─────
+
+// Název souboru obrázku = kód_pořadí.png (např. 1.3.3_1.png)
+export const IMAGE_NAME = /^(\d{1,2}(?:\.\d{1,2}){0,3})_(\d+)\.(png|jpe?g|webp)$/i;
+
+/** Obrázky ke kódu; když kód vlastní nemá, vezmou se z nejbližšího nadřazeného kódu (jako v PDF u skupiny). */
+export function imagesFor(images, kod) {
+  if (!images?.size) return { list: [], from: null };
+  const parts = kod.split('.');
+  for (let n = parts.length; n >= 1; n--) {
+    const k = parts.slice(0, n).join('.');
+    if (images.has(k)) return { list: images.get(k), from: k === kod ? null : k };
+  }
+  return { list: [], from: null };
+}

@@ -2,6 +2,7 @@
 // Oprávnění hlídá databáze (supabase/schema.sql), aplikace je jen zobrazuje.
 
 import { SUPABASE_URL, SUPABASE_ANON_KEY, VAPID_PUBLIC_KEY } from '../config.js';
+import { IMAGE_NAME } from '../codes.js';
 import { compressImage, uid } from '../model.js';
 
 await new Promise((res, rej) => {
@@ -15,7 +16,11 @@ await new Promise((res, rej) => {
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const BUCKET = 'attachments';
 const REG_BUCKET = 'predpisy';
+const IMG_BUCKET = 'katalog';
+const IMG_DIR = 'obrazky';
 let catalogPromise = null;
+let imagesPromise = null;
+let imagesAt = 0;
 const appUrl = () => location.origin + location.pathname;
 
 const MESSAGES = [
@@ -202,6 +207,37 @@ export const api = {
       .then((rows) => { if (!rows.length) catalogPromise = null; return rows; })
       .catch((e) => { catalogPromise = null; throw e; });
     return catalogPromise;
+  },
+
+  // Obrázky z katalogu (soukromé úložiště „katalog“): Map kód → [{ id, kind, url }], odkazy platí hodinu
+  listCodeImages() {
+    if (!imagesPromise || Date.now() - imagesAt > 50 * 60 * 1000) {
+      imagesAt = Date.now();
+      imagesPromise = (async () => {
+        const files = check(await sb.storage.from(IMG_BUCKET).list(IMG_DIR, { limit: 1000 }));
+        const found = files.map((f) => f.name.match(IMAGE_NAME)).filter(Boolean)
+          .sort((a, b) => a[1].localeCompare(b[1]) || Number(a[2]) - Number(b[2]));
+        const map = new Map();
+        if (!found.length) { imagesPromise = null; return map; }
+        const signed = check(await sb.storage.from(IMG_BUCKET)
+          .createSignedUrls(found.map((m) => `${IMG_DIR}/${m[0]}`), 3600));
+        found.forEach((m, i) => {
+          if (!map.has(m[1])) map.set(m[1], []);
+          map.get(m[1]).push({ id: m[0], kind: 'image', url: signed[i]?.signedUrl ?? '' });
+        });
+        return map;
+      })().catch((e) => { imagesPromise = null; throw e; });
+    }
+    return imagesPromise;
+  },
+  async uploadCodeImages(files, onProgress) {
+    let i = 0;
+    for (const f of files) {
+      onProgress?.(++i, files.length);
+      check(await sb.storage.from(IMG_BUCKET).upload(`${IMG_DIR}/${f.name}`, f,
+        { upsert: true, contentType: f.type || 'image/png' }));
+    }
+    imagesPromise = null;
   },
 
   // Předpisy (PDF v soukromém úložišti, odkazy platí hodinu)

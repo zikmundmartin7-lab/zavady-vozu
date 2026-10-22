@@ -386,6 +386,25 @@ drop policy if exists "předpisy: mazání správce" on storage.objects;
 create policy "předpisy: mazání správce" on storage.objects
   for delete to authenticated using (bucket_id = 'predpisy' and public.is_admin());
 
+-- Obrázky z katalogu závad (příloha 9 VSP): soukromý bucket, název souboru = kód_pořadí.png.
+-- Číst smí schválení uživatelé, nahrávat (i přepsat) a mazat správce.
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values ('katalog', 'katalog', false, 5242880, array['image/png', 'image/jpeg', 'image/webp'])
+on conflict (id) do nothing;
+
+drop policy if exists "katalog: čtení členové" on storage.objects;
+create policy "katalog: čtení členové" on storage.objects
+  for select to authenticated using (bucket_id = 'katalog' and public.is_member());
+drop policy if exists "katalog: nahrání správce" on storage.objects;
+create policy "katalog: nahrání správce" on storage.objects
+  for insert to authenticated with check (bucket_id = 'katalog' and public.is_admin());
+drop policy if exists "katalog: přepsání správce" on storage.objects;
+create policy "katalog: přepsání správce" on storage.objects
+  for update to authenticated using (bucket_id = 'katalog' and public.is_admin());
+drop policy if exists "katalog: mazání správce" on storage.objects;
+create policy "katalog: mazání správce" on storage.objects
+  for delete to authenticated using (bucket_id = 'katalog' and public.is_admin());
+
 -- ───────────────────────── Živé aktualizace ─────────────────────────
 
 alter publication supabase_realtime add table public.defects, public.comments;

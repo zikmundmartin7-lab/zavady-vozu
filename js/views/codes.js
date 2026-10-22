@@ -1,15 +1,31 @@
 // Kódy závad podle přílohy 9 VSP: záložka s hledáním v katalogu a pole pro kód ve formuláři závady.
 
 import { html, useEffect, useMemo, useRef, useState } from '../../vendor/preact-htm.js';
-import { codeOf, highlightTokens, searchCodes, typeCode } from '../codes.js';
+import { IMAGE_NAME, codeOf, highlightTokens, imagesFor, searchCodes, typeCode } from '../codes.js';
+import { can } from '../model.js';
 import {
-  BottomNav, Empty, Highlight, Icon, Loading, TopBar, UserButton, useApp, useCatalog,
+  BottomNav, Empty, Highlight, Icon, Loading, TopBar, UserButton, useApp, useCatalog, useCodeImages,
 } from '../ui.js';
 
 const isCodeQuery = (q) => /^\d/.test(q.trim());
 
-// Jedna položka katalogu: kód, konstrukční část, závada / kritéria, opatření a třída
-export function CodeItem({ c, tokens = [], onPick, picked }) {
+// Obrázky z katalogu u kódu; v klikací položce (výběr kódu) jen náhled, jinak se dají zvětšit
+function CodeImages({ kod, images, interactive }) {
+  const { openMedia } = useApp();
+  const { list, from } = imagesFor(images, kod);
+  if (!list.length) return null;
+  return html`
+    <div class="code-images">
+      ${list.map((m, i) => (interactive
+        ? html`<button type="button" key=${m.id} class="code-img-btn" onClick=${() => openMedia(list, i)}
+            aria-label="Zvětšit obrázek"><img src=${m.url} alt="" loading="lazy" /></button>`
+        : html`<img key=${m.id} src=${m.url} alt="" loading="lazy" />`))}
+      ${from && html`<span class="code-img-from">obrázek ke kódu ${from}</span>`}
+    </div>`;
+}
+
+// Jedna položka katalogu: kód, konstrukční část, závada / kritéria, obrázky, opatření a třída
+export function CodeItem({ c, tokens = [], onPick, picked, images }) {
   const body = html`
     <div class="code-item-head">
       <span class="code-no">${c.kod}</span>
@@ -18,6 +34,7 @@ export function CodeItem({ c, tokens = [], onPick, picked }) {
     ${c.kontext && html`<div class="code-context"><${Highlight} text=${c.kontext} tokens=${tokens} /></div>`}
     ${c.popis && html`<div class="code-text"><${Highlight} text=${c.popis} tokens=${tokens} /></div>`}
     ${c.poznamka && html`<div class="code-note">Pozn.: <${Highlight} text=${c.poznamka} tokens=${tokens} /></div>`}
+    <${CodeImages} kod=${c.kod} images=${images} interactive=${!onPick} />
     ${(c.opatreni || c.trida) && html`
       <div class="code-meta">
         ${c.opatreni && html`<span>Opatření: <b>${c.opatreni}</b></span>`}
@@ -38,11 +55,51 @@ function CodeTextSearch({ value, onInput, placeholder }) {
     </label>`;
 }
 
+// Nahrání obrázků katalogu (jen správce): soubory pojmenované kód_pořadí.png
+function ImageUpload({ count }) {
+  const { api, toast, refresh } = useApp();
+  const [busy, setBusy] = useState('');
+
+  async function pick(e) {
+    const files = [...e.currentTarget.files];
+    e.currentTarget.value = '';
+    const ok = files.filter((f) => IMAGE_NAME.test(f.name));
+    const skipped = files.length - ok.length;
+    if (!ok.length) {
+      toast('Vyberte obrázky pojmenované podle kódu, např. 1.3.3_1.png.', { kind: 'error' });
+      return;
+    }
+    try {
+      await api.uploadCodeImages(ok, (i, n) => setBusy(`Nahrávám ${i}/${n}…`));
+      toast(`Nahráno obrázků: ${ok.length}${skipped ? ` (přeskočeno ${skipped} s jiným názvem)` : ''}.`);
+      refresh();
+    } catch (err) {
+      toast(err.message, { kind: 'error' });
+    } finally {
+      setBusy('');
+    }
+  }
+
+  return html`
+    <section class="card upload-card">
+      <h2><${Icon} name="upload" /> Obrázky katalogu</h2>
+      <p class="muted">${count ? `Nahráno obrázků: ${count}.` : 'Zatím nejsou nahrané žádné obrázky.'}
+        Vyberte najednou všechny soubory ze složky s obrázky katalogu (názvy jako 1.3.3_1.png).
+        Stejně pojmenované obrázky se přepíšou.</p>
+      <label class="btn btn-primary block">
+        <${Icon} name="image" /> ${busy || 'Nahrát obrázky katalogu'}
+        <input type="file" accept="image/png,image/jpeg,image/webp" multiple hidden disabled=${!!busy} onChange=${pick} />
+      </label>
+    </section>`;
+}
+
 // ───── Záložka „Kódy závad“ ─────
 
 export function CodesView() {
-  const { api } = useApp();
+  const { api, me } = useApp();
   const catalog = useCatalog();
+  const images = useCodeImages();
+  const imageCount = images ? [...images.values()].reduce((n, l) => n + l.length, 0) : 0;
   const [q, setQ] = useState('');
   const results = useMemo(() => searchCodes(catalog, q, isCodeQuery(q) ? 400 : 150), [catalog, q]);
   const tokens = isCodeQuery(q) ? [] : highlightTokens(q);
@@ -72,8 +129,9 @@ export function CodesView() {
         <div class="hint">${results.length ? `Nalezeno: ${results.length}${results.length >= 150 && !isCodeQuery(q) ? '+ (upřesněte hledání)' : ''}` : ''}</div>
         ${results.length === 0 && html`<${Empty}>Nic nenalezeno. Zkuste jiné slovo nebo jen jeho začátek.<//>`}
         <div class="code-list">
-          ${results.map((r) => html`<${CodeItem} key=${r.c.kod} c=${r.c} tokens=${tokens} />`)}
+          ${results.map((r) => html`<${CodeItem} key=${r.c.kod} c=${r.c} tokens=${tokens} images=${images} />`)}
         </div>`}
+      ${!q.trim() && can.admin(me) && api.mode !== 'demo' && html`<${ImageUpload} count=${imageCount} />`}
     </main>
     <${BottomNav} active="kody" />`;
 }
@@ -86,6 +144,7 @@ export function CodesView() {
  */
 export function CodePicker({ value, onChange }) {
   const catalog = useCatalog();
+  const images = useCodeImages();
   const [typed, setTyped] = useState(value ?? '');
   const [focused, setFocused] = useState(false);
   const [text, setText] = useState('');
@@ -137,13 +196,13 @@ export function CodePicker({ value, onChange }) {
           onClick=${(e) => { e.preventDefault(); set(''); inputRef.current?.focus(); }}><${Icon} name="x" size=${18} /></button>`}
       </label>
 
-      ${exact && html`<div class="code-picked"><${CodeItem} c=${exact} /></div>`}
+      ${exact && html`<div class="code-picked"><${CodeItem} c=${exact} images=${images} /></div>`}
       ${code && !exact && catalog?.length > 0 && suggestions.length === 0 && html`
         <div class="warn"><${Icon} name="alert" size=${16} /> Kód ${code} v katalogu přílohy 9 VSP není.</div>`}
       ${suggestions.length > 0 && html`
         <div class="hint">${exact ? 'Podrobnější kódy:' : 'Pokračujte v psaní, nebo vyberte:'}</div>
         <div class="code-list compact">
-          ${suggestions.map((r) => html`<${CodeItem} key=${r.c.kod} c=${r.c} onPick=${pick} />`)}
+          ${suggestions.map((r) => html`<${CodeItem} key=${r.c.kod} c=${r.c} onPick=${pick} images=${images} />`)}
         </div>`}
 
       <div class="code-text-search">
@@ -152,7 +211,7 @@ export function CodePicker({ value, onChange }) {
       ${text.trim() && catalog && html`
         ${textResults.length === 0 && html`<${Empty}>Nic nenalezeno.<//>`}
         <div class="code-list compact">
-          ${textResults.map((r) => html`<${CodeItem} key=${r.c.kod} c=${r.c} tokens=${tokens} onPick=${pick} picked=${r.c.kod === code} />`)}
+          ${textResults.map((r) => html`<${CodeItem} key=${r.c.kod} c=${r.c} tokens=${tokens} onPick=${pick} picked=${r.c.kod === code} images=${images} />`)}
         </div>`}
     </div>`;
 }

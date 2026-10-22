@@ -440,3 +440,15 @@ button.code-item:hover { border-color: var(--primary); }
 .reg-icon { color: var(--red); }
 .reg-info { display: flex; flex-direction: column; min-width: 0; }
 .reg-info b { overflow-wrap: anywhere; }
+
+/* Obrázky z katalogu */
+.code-images { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; margin-top: .55rem; }
+.code-images img {
+  display: block; height: 104px; max-width: 100%; object-fit: contain;
+  background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 4px;
+}
+.code-list.compact .code-images img { height: 72px; }
+.code-img-btn { border: 0; padding: 0; background: none; cursor: zoom-in; max-width: 100%; }
+.code-img-from { width: 100%; font-size: .78rem; color: var(--muted); }
+.upload-card { margin-top: 1.5rem; }
+.lightbox img { background: #fff; }

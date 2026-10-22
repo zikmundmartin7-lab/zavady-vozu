@@ -303,6 +303,8 @@ export const api = {
   // Katalog kódů a předpisy
   async listCodes() { return DEMO_CODES; },
   async listRegulations() { return []; },
+  async listCodeImages() { return new Map(); },
+  async uploadCodeImages() { throw new Error('V ukázkovém režimu nelze nahrávat obrázky katalogu.'); },
   async addRegulation() { throw new Error('V ukázkovém režimu nelze nahrávat předpisy.'); },
   async deleteRegulation() { throw new Error('V ukázkovém režimu nelze mazat předpisy.'); },
 

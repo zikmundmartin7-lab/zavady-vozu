@@ -106,6 +106,12 @@ export function useCatalog() {
   return catalog;
 }
 
+// Obrázky z katalogu (Map kód → obrázky); načtou se jednou, po nahrání nových se obnoví
+export function useCodeImages() {
+  const { api } = useApp();
+  return useLoad(() => api.listCodeImages(), []).data ?? null;
+}
+
 // Krátké shrnutí kódu z katalogu: „Pojezd › Nalisované obruče kol – Tloušťka menší než …“
 export function CodeSummary({ code, catalog }) {
   const c = catalog?.find((x) => x.kod === code);
