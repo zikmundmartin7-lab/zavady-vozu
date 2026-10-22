@@ -3,3 +3,4 @@
 .env
 *.local
 private/
+__pycache__/

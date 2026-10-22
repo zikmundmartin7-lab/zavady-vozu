@@ -1,0 +1,10 @@
+[Unit]
+Description=Závady vozů – noční záloha databáze a souborů (časovač)
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+Persistent=true
+RandomizedDelaySec=15min
+
+[Install]
+WantedBy=timers.target

@@ -123,13 +123,15 @@ create index defects_wagon_idx on public.defects (wagon_id);
 create index defects_open_idx on public.defects (wagon_id) where resolved_at is null;
 
 -- Kdo smí co měnit:
---   text, kód závady, datum zjištění → autor závady nebo správce
+--   text, kód závady, datum zjištění → autor závady nebo správce; po opravě (zamčeno) jen správce
 --   opraveno / vrátit               → autor závady, opravář nebo správce
 -- Datum zjištění nesmí být v budoucnosti (rezerva 5 min na nepřesné hodiny v telefonu)
 -- a u opravené závady nesmí být pozdější než oprava. Čas vložení a čas opravy určuje server.
 create or replace function public.prepare_defect() returns trigger
 language plpgsql as $$
 begin
+  -- obnova z koše (restore_deleted) vrací záznam beze změny, i s původními časy
+  if current_setting('app.restoring', true) = '1' then return new; end if;
   new.created_at := now();
   new.found_at := coalesce(new.found_at, now());
   if new.found_at > now() + interval '5 minutes' then
@@ -157,6 +159,10 @@ begin
                         or new.resolution_note is distinct from old.resolution_note;
   if content_changed and not (old.created_by = auth.uid() or public.is_admin()) then
     raise exception 'Závadu může upravit jen ten, kdo ji vložil, nebo správce.';
+  end if;
+  -- Opravená závada je zamčená: měnit ji smí jen správce (nebo ji nejdřív vrátit mezi neopravené)
+  if content_changed and old.resolved_at is not null and not public.is_admin() then
+    raise exception 'Opravená závada je zamčená. Upravit ji může jen správce, nebo ji nejdřív vraťte mezi neopravené.';
   end if;
   if new.found_at is distinct from old.found_at then
     if new.found_at > now() + interval '5 minutes' then
@@ -277,6 +283,129 @@ create table if not exists public.regulations (
   created_at  timestamptz not null default now()
 );
 
+-- ───────────────────────── Historie změn a koš ─────────────────────────
+-- Každá změna (vložení, úprava, smazání, obnovení) se zapíše do audit_log i s původními a novými hodnotami.
+-- Smazané záznamy zůstávají v audit_log navždy – to je „koš“; správce je může obnovit (restore_deleted).
+-- Všechno smazané jednou akcí (např. vůz i s jeho závadami) má stejné číslo transakce (tx).
+
+create table if not exists public.audit_log (
+  id           bigint generated always as identity primary key,
+  tx           bigint not null default txid_current(),
+  at           timestamptz not null default now(),
+  actor        uuid default auth.uid(),
+  actor_name   text,
+  tbl          text not null,
+  row_id       text not null,
+  action       text not null check (action in ('insert', 'update', 'delete', 'restore')),
+  old_row      jsonb,
+  new_row      jsonb,
+  wagon_id     uuid,
+  defect_id    uuid,
+  restored_at  timestamptz,
+  restored_by  uuid
+);
+create index if not exists audit_log_defect_idx on public.audit_log (defect_id, at);
+create index if not exists audit_log_wagon_idx on public.audit_log (wagon_id, at);
+create index if not exists audit_log_trash_idx on public.audit_log (at desc) where action = 'delete';
+
+create or replace function public.audit_row() returns trigger
+language plpgsql security definer set search_path = '' as $$
+declare
+  o jsonb := case when tg_op in ('UPDATE', 'DELETE') then to_jsonb(old) end;
+  n jsonb := case when tg_op in ('INSERT', 'UPDATE') then to_jsonb(new) end;
+  r jsonb := coalesce(n, o);
+  v_action text := lower(tg_op);
+  v_defect uuid;
+  v_wagon uuid;
+begin
+  if tg_op = 'UPDATE' and o = n then return null; end if;          -- nic se nezměnilo
+  if tg_op = 'INSERT' and current_setting('app.restoring', true) = '1' then v_action := 'restore'; end if;
+  if tg_table_name = 'defects' then
+    v_defect := (r ->> 'id')::uuid;
+    v_wagon := (r ->> 'wagon_id')::uuid;
+  elsif tg_table_name in ('comments', 'attachments') then
+    v_defect := (r ->> 'defect_id')::uuid;
+    select d.wagon_id into v_wagon from public.defects d where d.id = v_defect;
+  elsif tg_table_name = 'wagons' then
+    v_wagon := (r ->> 'id')::uuid;
+  end if;
+  insert into public.audit_log (actor, actor_name, tbl, row_id, action, old_row, new_row, wagon_id, defect_id)
+  values (auth.uid(), (select p.full_name from public.profiles p where p.id = auth.uid()),
+          tg_table_name, r ->> 'id', v_action, o, n, v_wagon, v_defect);
+  return null;
+end $$;
+
+drop trigger if exists wagons_audit on public.wagons;
+create trigger wagons_audit after insert or update or delete on public.wagons
+  for each row execute function public.audit_row();
+drop trigger if exists defects_audit on public.defects;
+create trigger defects_audit after insert or update or delete on public.defects
+  for each row execute function public.audit_row();
+drop trigger if exists attachments_audit on public.attachments;
+create trigger attachments_audit after insert or update or delete on public.attachments
+  for each row execute function public.audit_row();
+drop trigger if exists comments_audit on public.comments;
+create trigger comments_audit after insert or update or delete on public.comments
+  for each row execute function public.audit_row();
+drop trigger if exists regulations_audit on public.regulations;
+create trigger regulations_audit after insert or update or delete on public.regulations
+  for each row execute function public.audit_row();
+drop trigger if exists profiles_audit on public.profiles;
+create trigger profiles_audit after insert or update or delete on public.profiles
+  for each row execute function public.audit_row();
+
+-- Obnovení smazaných záznamů z koše (jen správce): vrátí vše, co se smazalo jednou akcí (tx),
+-- ve správném pořadí (vůz → závady → přílohy a komentáře). Soubory (fotky, PDF) se při mazání neodstraňují.
+create or replace function public.restore_deleted(p_tx bigint) returns integer
+language plpgsql security definer set search_path = '' as $$
+declare
+  r record;
+  cols text;
+  n integer := 0;
+begin
+  if not public.is_admin() then
+    raise exception 'Obnovit smazané záznamy může jen správce.';
+  end if;
+  perform set_config('app.restoring', '1', true);
+  for r in
+    select * from public.audit_log
+    where tx = p_tx and action = 'delete' and restored_at is null
+    order by case tbl when 'wagons' then 1 when 'defects' then 2 when 'regulations' then 3 else 4 end, id
+  loop
+    select string_agg(quote_ident(attname), ', ' order by attnum) into cols
+    from pg_attribute
+    where attrelid = format('public.%I', r.tbl)::regclass and attnum > 0 and not attisdropped and attgenerated = '';
+    begin
+      execute format('insert into public.%I (%s) select %s from jsonb_populate_record(null::public.%I, $1) on conflict (id) do nothing',
+                     r.tbl, cols, cols, r.tbl) using r.old_row;
+    exception when foreign_key_violation then
+      raise exception 'Nelze obnovit: nadřazený záznam (vůz nebo závada) je také smazaný. Obnovte nejdřív ten.';
+    end;
+    update public.audit_log set restored_at = now(), restored_by = auth.uid() where id = r.id;
+    n := n + 1;
+  end loop;
+  perform set_config('app.restoring', '', true);
+  return n;
+end $$;
+
+-- ───────────────────────── Pravidelné exporty na e-mail ─────────────────────────
+-- Nastavuje správce v aplikaci, rozesílá server (server/zavady.py exports) každou hodinu.
+
+create table if not exists public.export_schedules (
+  id            uuid primary key default gen_random_uuid(),
+  recipient     text not null check (recipient ~ '^[^@\s]+@[^@\s]+\.[^@\s]+$'),
+  report        text not null check (report in ('open', 'all')),
+  frequency     text not null check (frequency in ('daily', 'weekly', 'monthly')),
+  weekday       smallint check (weekday between 1 and 7),      -- 1 = pondělí (u týdenního)
+  monthday      smallint check (monthday between 1 and 28),    -- den v měsíci (u měsíčního)
+  hour          smallint not null default 7 check (hour between 0 and 23),
+  active        boolean not null default true,
+  last_sent_at  timestamptz,
+  last_error    text,
+  created_by    uuid references public.profiles on delete set null default auth.uid(),
+  created_at    timestamptz not null default now()
+);
+
 -- ───────────────────────── Oprávnění (Row Level Security) ─────────────────────────
 
 alter table public.profiles           enable row level security;
@@ -288,6 +417,8 @@ alter table public.comments           enable row level security;
 alter table public.push_subscriptions enable row level security;
 alter table public.defect_codes       enable row level security;
 alter table public.regulations        enable row level security;
+alter table public.audit_log          enable row level security;
+alter table public.export_schedules   enable row level security;
 
 create policy "profil: vlastní nebo člen vidí" on public.profiles
   for select to authenticated using (id = auth.uid() or public.is_member());
@@ -316,7 +447,7 @@ create policy "závady: úprava" on public.defects
   for update to authenticated
   using (public.is_member() and (created_by = auth.uid() or public.can_resolve()));
 create policy "závady: mazání autor nebo správce" on public.defects
-  for delete to authenticated using (created_by = auth.uid() or public.is_admin());
+  for delete to authenticated using (public.is_admin() or (created_by = auth.uid() and resolved_at is null));
 
 create policy "přílohy: čtení" on public.attachments
   for select to authenticated using (public.is_member());
@@ -324,11 +455,11 @@ create policy "přílohy: přidání autor závady nebo správce" on public.atta
   for insert to authenticated with check (
     public.is_member() and created_by = auth.uid() and exists (
       select 1 from public.defects d
-      where d.id = defect_id and (d.created_by = auth.uid() or public.is_admin())));
+      where d.id = defect_id and (public.is_admin() or (d.created_by = auth.uid() and d.resolved_at is null))));
 create policy "přílohy: mazání autor závady nebo správce" on public.attachments
   for delete to authenticated using (
     public.is_admin() or exists (
-      select 1 from public.defects d where d.id = defect_id and d.created_by = auth.uid()));
+      select 1 from public.defects d where d.id = defect_id and d.created_by = auth.uid() and d.resolved_at is null));
 
 create policy "komentáře: čtení" on public.comments
   for select to authenticated using (public.is_member());
@@ -343,6 +474,14 @@ create policy "push: vlastní odběry" on public.push_subscriptions
 drop policy if exists "kódy závad: čtení" on public.defect_codes;
 create policy "kódy závad: čtení" on public.defect_codes
   for select to authenticated using (public.is_member());
+
+drop policy if exists "historie: čtení" on public.audit_log;
+create policy "historie: čtení" on public.audit_log
+  for select to authenticated using (public.is_member());
+
+drop policy if exists "exporty: správce" on public.export_schedules;
+create policy "exporty: správce" on public.export_schedules
+  for all to authenticated using (public.is_admin()) with check (public.is_admin());
 
 drop policy if exists "předpisy: čtení" on public.regulations;
 create policy "předpisy: čtení" on public.regulations

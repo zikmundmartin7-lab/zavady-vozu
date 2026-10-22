@@ -1,0 +1,10 @@
+[Unit]
+Description=Závady vozů – pravidelné exporty na e-mail (časovač)
+
+[Timer]
+OnCalendar=*-*-* *:05:00
+Persistent=true
+RandomizedDelaySec=1min
+
+[Install]
+WantedBy=timers.target

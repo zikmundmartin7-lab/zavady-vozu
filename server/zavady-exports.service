@@ -1,0 +1,17 @@
+[Unit]
+Description=Závady vozů – pravidelné exporty na e-mail
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=zavady
+WorkingDirectory=/opt/zavady-server
+ExecStart=/usr/bin/python3 /opt/zavady-server/zavady.py exports
+TimeoutStartSec=2h
+# Služba smí zapisovat jen do složky se zálohami, zbytek systému vidí jen pro čtení
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/backups/zavady

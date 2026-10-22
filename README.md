@@ -67,6 +67,15 @@ Návod pro kolegy pro Android i iPhone (stránka s QR kódem): <https://zikmundm
 
 Později lze ze stejné aplikace vytvořit i instalační soubor APK nebo ji dát na Google Play (např. přes [PWABuilder](https://www.pwabuilder.com)). Kód se přitom nemění.
 
+## Historie, koš, exporty a zálohy
+
+- **Historie změn:** každá změna závady, vozu, fotky, komentáře, předpisu i role uživatele se zapisuje do tabulky `audit_log` (kdo, kdy, co bylo předtím a potom). U závady: **Historie změn**, pro správce celkový přehled v **Můj účet → Historie změn**.
+- **Koš:** smazané záznamy zůstávají navždy v historii a správce je obnoví v **Můj účet → Koš** (obnoví se celá akce, např. vůz i se závadami). Soubory se při mazání neodstraňují.
+- **Zamčení:** opravenou závadu může měnit nebo smazat jen správce; ostatní ji nejdřív musí vrátit mezi neopravené. Komentovat jde dál.
+- **Přehled a export:** záložka **Přehled** (všechny závady s filtry) a tlačítko **Export do Excelu**.
+- **Zápis bez signálu:** závada uložená bez připojení čeká v telefonu a odešle se sama.
+- **Server** (`server/`, běží na stejném serveru jako chatbot): každou noc ve 2:30 záloha databáze (`pg_dump`) a všech souborů do `/var/backups/zavady`, každou hodinu rozeslání pravidelných exportů (nastavuje správce v **Můj účet → Pravidelné exporty**). E-maily jdou přes Gmail (heslo pro aplikace). Nahrání: vyplnit `server/.env` podle `server/.env.example` a spustit `server/deploy.sh root@2.31.44.49`.
+
 ## Limity a náklady
 
 Bezplatný tarif Supabase (ověřte aktuální stav na supabase.com/pricing):
@@ -88,6 +97,7 @@ js/ui.js, js/views/*.js                   obrazovky (Preact + htm, bez sestavov�
 supabase/schema.sql                       tabulky, oprávnění (RLS), úložiště
 supabase/functions/notify-new-defect/     rozesílání push upozornění
 supabase/oprava_*.sql, migrace_*.sql      jednorázové opravy a úpravy databáze
+server/                                   noční zálohy a pravidelné exporty na e-mail (služba na serveru)
 tools/katalog_vsp9.py                     převod katalogu závad z PDF přílohy 9 VSP (výstup do private/, mimo GitHub)
 navod.html                                návod k instalaci, Android i iPhone (QR: tools/qr.py)
 tools/ikony.py, tools/vapid.html          ikony aplikace, generátor klíčů
