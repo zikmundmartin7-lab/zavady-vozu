@@ -10,15 +10,40 @@ export const useApp = () => useContext(AppCtx);
 export const go = (hash) => { location.hash = hash; };
 export const replace = (hash) => { location.replace(hash); };
 
+// Poslední známá data (např. skupiny s počty závad) – zobrazí se hned při spuštění, pak se obnoví.
+// Při odhlášení se mažou (clearLocalCache).
+const CACHE_PREFIX = 'zavady-cache:';
+const memoryCache = new Map();
+function readCache(key) {
+  if (memoryCache.has(key)) return memoryCache.get(key);
+  try { return JSON.parse(localStorage.getItem(CACHE_PREFIX + key)) ?? undefined; } catch { return undefined; }
+}
+function writeCache(key, data) {
+  memoryCache.set(key, data);
+  try { localStorage.setItem(CACHE_PREFIX + key, JSON.stringify(data)); } catch { /* plná paměť – nevadí */ }
+}
+export function clearLocalCache() {
+  memoryCache.clear();
+  try {
+    Object.keys(localStorage).filter((k) => k.startsWith(CACHE_PREFIX)).forEach((k) => localStorage.removeItem(k));
+  } catch { /* nevadí */ }
+}
+
 // Načte data a znovu je načte při změně závislostí nebo při živé změně v databázi (app.version).
-export function useLoad(fn, deps) {
-  const { version } = useApp();
-  const [state, setState] = useState({ loading: true, data: undefined, error: null });
+// S cacheKey ukáže hned poslední známá data a obnoví je na pozadí.
+export function useLoad(fn, deps, cacheKey) {
+  const { api, version } = useApp();
+  const key = cacheKey ? `${api.mode}:${cacheKey}` : null;
+  const [state, setState] = useState(() => ({ loading: true, data: key ? readCache(key) : undefined, error: null }));
   useEffect(() => {
     let alive = true;
     setState((s) => ({ ...s, loading: true }));
     fn().then(
-      (data) => alive && setState({ loading: false, data, error: null }),
+      (data) => {
+        if (!alive) return;
+        if (key) writeCache(key, data);
+        setState({ loading: false, data, error: null });
+      },
       (error) => alive && setState((s) => ({ loading: false, data: s.data, error })),
     );
     return () => { alive = false; };
@@ -157,9 +182,7 @@ export const Fab = ({ href, label = 'Nová závada' }) => html`
   <a class="fab" href=${href}><${Icon} name="plus" size=${22} /> ${label}</a>`;
 
 export function UserButton() {
-  const { api, me } = useApp();
-  const users = useLoad(() => (can.admin(me) ? api.listProfiles() : Promise.resolve([])), [me?.role]);
-  const pending = (users.data ?? []).filter((u) => u.role === 'pending').length;
+  const { me, pendingUsers: pending } = useApp();
   return html`
     <a class="avatar" href="#/ucet" aria-label="Můj účet" title=${me?.full_name}>
       ${(me?.full_name || '?').split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase()}
@@ -305,7 +328,7 @@ export function DefectCard({ d, showComments = true }) {
             <button key=${a.id} class="media-thumb" onClick=${() => openMedia(d.attachments, i)}
               aria-label=${a.kind === 'video' ? 'Přehrát video' : 'Zobrazit fotku'}>
               ${a.kind === 'video'
-                ? html`<video src=${a.url} preload="metadata" muted playsinline></video><span class="play"><${Icon} name="play" size=${22} /></span>`
+                ? html`<video src=${a.url} preload="none" muted playsinline></video><span class="play"><${Icon} name="play" size=${22} /></span>`
                 : html`<img src=${a.url} alt="" loading="lazy" />`}
             </button>`)}
         </div>`}
@@ -378,7 +401,7 @@ export function Toasts({ items, dismiss }) {
     <div class="toasts" role="status" aria-live="polite">
       ${items.map((t) => html`
         <div key=${t.id} class="toast toast-${t.kind ?? 'info'}"
-          onClick=${() => { if (t.href) go(t.href); dismiss(t.id); }}>
+          onClick=${() => { if (t.action) t.action(); else if (t.href) go(t.href); dismiss(t.id); }}>
           ${t.title && html`<b>${t.title}</b>`}
           <div>${t.message}</div>
         </div>`)}

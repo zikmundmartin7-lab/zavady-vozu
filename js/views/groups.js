@@ -9,7 +9,7 @@ import {
 
 export function HomeView() {
   const { api } = useApp();
-  const groups = useLoad(() => api.listGroups(), []);
+  const groups = useLoad(() => api.listGroups(), [], 'groups');
   const [q, setQ] = useState('');
 
   return html`
@@ -50,8 +50,8 @@ function WagonList({ wagons }) {
 
 export function GroupView({ id }) {
   const { api } = useApp();
-  const groups = useLoad(() => api.listGroups(), []);
-  const wagons = useLoad(() => api.listWagons(id), [id]);
+  const groups = useLoad(() => api.listGroups(), [], 'groups');
+  const wagons = useLoad(() => api.listWagons(id), [id], `wagons:${id}`);
   const [q, setQ] = useState('');
   const [showAll, setShowAll] = useState(false);
   const g = groups.data?.find((x) => x.id === id);

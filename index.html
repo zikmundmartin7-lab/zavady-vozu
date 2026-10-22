@@ -10,6 +10,23 @@
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
   <link rel="stylesheet" href="css/app.css" />
+  <!-- Všechny části aplikace se stáhnou najednou (jinak by se načítaly postupně jedna po druhé) -->
+  <link rel="modulepreload" href="js/app.js" />
+  <link rel="modulepreload" href="js/config.js" />
+  <link rel="modulepreload" href="js/model.js" />
+  <link rel="modulepreload" href="js/codes.js" />
+  <link rel="modulepreload" href="js/ui.js" />
+  <link rel="modulepreload" href="js/api/index.js" />
+  <link rel="modulepreload" href="js/api/supabase.js" />
+  <link rel="modulepreload" href="js/views/account.js" />
+  <link rel="modulepreload" href="js/views/codes.js" />
+  <link rel="modulepreload" href="js/views/defect.js" />
+  <link rel="modulepreload" href="js/views/form.js" />
+  <link rel="modulepreload" href="js/views/groups.js" />
+  <link rel="modulepreload" href="js/views/regulations.js" />
+  <link rel="modulepreload" href="js/views/wagon.js" />
+  <link rel="modulepreload" href="vendor/preact-htm.js" />
+  <script defer src="vendor/supabase.js"></script>
   <script type="module" src="js/app.js"></script>
 </head>
 <body>

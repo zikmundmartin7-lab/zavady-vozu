@@ -3,7 +3,7 @@
 import { html, render, useEffect, useState } from '../vendor/preact-htm.js';
 import { api } from './api/index.js';
 import { can, formatNumber } from './model.js';
-import { AppCtx, Lightbox, Loading, Toasts } from './ui.js';
+import { AppCtx, Lightbox, Loading, Toasts, clearLocalCache } from './ui.js';
 import { AccountView, LoginView, PendingView, RecoveryView, UsersView } from './views/account.js';
 import { DefectView } from './views/defect.js';
 import { CodesView } from './views/codes.js';
@@ -11,6 +11,18 @@ import { DefectFormView } from './views/form.js';
 import { RegulationsView } from './views/regulations.js';
 import { GroupView, HomeView } from './views/groups.js';
 import { WagonView } from './views/wagon.js';
+
+// Poslední přihlášený uživatel (jen pro rychlé spuštění; oprávnění vždy hlídá databáze)
+const ME_KEY = `zavady-me:${api.mode}`;
+function readMe() {
+  try { return JSON.parse(localStorage.getItem(ME_KEY)) ?? undefined; } catch { return undefined; }
+}
+function saveMe(p) {
+  try {
+    if (p) localStorage.setItem(ME_KEY, JSON.stringify(p));
+    else { localStorage.removeItem(ME_KEY); clearLocalCache(); }
+  } catch { /* nevadí */ }
+}
 
 function parseRoute(hash) {
   const [path, query] = hash.replace(/^#/, '').split('?');
@@ -47,21 +59,28 @@ let toastSeq = 0;
 
 function App() {
   const route = useRoute();
-  const [me, setMe] = useState(undefined); // undefined = načítám, null = nepřihlášen
+  // Poslední přihlášený uživatel z paměti telefonu → aplikace se ukáže hned, ověření proběhne na pozadí
+  const [me, setMe] = useState(() => readMe()); // undefined = načítám, null = nepřihlášen
   const [version, setVersion] = useState(0);
   const [toasts, setToasts] = useState([]);
   const [media, setMedia] = useState(null);
   const [recovery, setRecovery] = useState(false);
   const [installPrompt, setInstallPrompt] = useState(null);
   const [tabReset, setTabReset] = useState(0);
+  const [pendingUsers, setPendingUsers] = useState(0);
 
-  const reloadMe = () => api.getProfile().then(setMe, () => setMe(null));
+  const reloadMe = () => api.getProfile().then(
+    (p) => { setMe(p); saveMe(p); },
+    // chyba sítě: nechat uživatele z paměti (data se načtou, až bude signál); bez něj zobrazit přihlášení.
+    // Vypršelé přihlášení vrací null (větev výše), takže tady se nikdo neodhlásí jen kvůli výpadku.
+    (e) => { console.warn(e); setMe((cur) => (cur === undefined ? null : cur)); },
+  );
   const refresh = () => setVersion((v) => v + 1);
   const dismiss = (id) => setToasts((t) => t.filter((x) => x.id !== id));
   const toast = (message, opts = {}) => {
     const id = ++toastSeq;
     setToasts((t) => [...t.slice(-2), { id, message, ...opts }]);
-    setTimeout(() => dismiss(id), opts.kind === 'error' ? 7000 : opts.href ? 8000 : 3500);
+    setTimeout(() => dismiss(id), opts.sticky ? 30000 : opts.kind === 'error' ? 7000 : opts.href ? 8000 : 3500);
   };
 
   useEffect(() => {
@@ -73,6 +92,21 @@ function App() {
     const onInstall = (e) => { e.preventDefault(); setInstallPrompt(e); };
     addEventListener('beforeinstallprompt', onInstall);
     return () => { off(); removeEventListener('beforeinstallprompt', onInstall); };
+  }, []);
+
+  // Správce: počet uživatelů čekajících na schválení (tečka u ikony účtu)
+  useEffect(() => {
+    if (!can.admin(me)) { setPendingUsers(0); return; }
+    api.listProfiles().then((p) => setPendingUsers(p.filter((u) => u.role === 'pending').length), () => {});
+  }, [me?.id, me?.role, version]);
+
+  // Nová verze aplikace (service worker ji stáhl na pozadí) → nabídnout načtení
+  useEffect(() => {
+    const onUpdate = () => toast('Klepněte sem pro načtení nové verze.', {
+      title: 'Je k dispozici nová verze aplikace', action: () => location.reload(), sticky: true,
+    });
+    addEventListener('app-updated', onUpdate);
+    return () => removeEventListener('app-updated', onUpdate);
   }, []);
 
   // Živé změny z databáze → překreslit; nová závada od někoho jiného → upozornění v aplikaci.
@@ -99,6 +133,7 @@ function App() {
     api, me, version, refresh, toast, reloadMe, installPrompt,
     openMedia: (items, index) => setMedia({ items, index }),
     resetTab: () => { setTabReset((n) => n + 1); scrollTo(0, 0); },
+    pendingUsers,
   };
 
   let content;
@@ -120,9 +155,11 @@ function App() {
 render(html`<${App} />`, document.getElementById('app'));
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js').catch((e) => console.warn('Service worker:', e));
+  // updateViaCache: 'none' → novou verzi service workeru prohlížeč hledá vždy na serveru
+  navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).catch((e) => console.warn('Service worker:', e));
   // Kliknutí na upozornění, když je aplikace otevřená → přejít na vůz
   navigator.serviceWorker.addEventListener('message', (e) => {
     if (e.data?.type === 'open' && e.data.url) location.hash = e.data.url.replace(/^[^#]*/, '');
+    if (e.data?.type === 'updated') dispatchEvent(new Event('app-updated'));
   });
 }

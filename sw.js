@@ -1,6 +1,6 @@
-// Service worker: offline záloha aplikace a push upozornění na nové závady.
+// Service worker: rychlé spuštění z paměti telefonu, offline záloha a push upozornění na nové závady.
 
-const CACHE = 'zavady-v11';
+const CACHE = 'zavady-v12';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/config.js', 'js/model.js', 'js/codes.js', 'js/ui.js', 'js/api/index.js', 'js/api/demo.js', 'js/api/supabase.js',
@@ -9,29 +9,47 @@ const SHELL = [
   'vendor/preact-htm.js', 'vendor/supabase.js', 'icons/icon.svg', 'icons/icon-192.png', 'icons/badge-96.png',
 ];
 
+// Nová verze: stáhnout všechny soubory znovu ze sítě (ne z mezipaměti prohlížeče)
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE)
+    .then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' }))))
+    .then(() => self.skipWaiting()));
 });
 
+// Po aktivaci smazat starou verzi a otevřeným oknům říct, že je k dispozici nová
 self.addEventListener('activate', (e) => {
-  e.waitUntil(caches.keys()
-    .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
-    .then(() => self.clients.claim()));
+  e.waitUntil((async () => {
+    const old = (await caches.keys()).filter((k) => k !== CACHE);
+    await Promise.all(old.map((k) => caches.delete(k)));
+    await self.clients.claim();
+    if (old.length) {
+      for (const c of await self.clients.matchAll({ type: 'window' })) c.postMessage({ type: 'updated' });
+    }
+  })());
 });
 
-// Nejdřív síť (vždy nejnovější verze), bez signálu ze zálohy.
+// Soubory aplikace hned z paměti telefonu (rychlé spuštění), na pozadí se ověří novější verze.
+// Co v paměti není, stáhne se ze sítě; bez signálu se použije uložená verze.
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET' || url.origin !== location.origin) return;
-  e.respondWith(fetch(e.request)
-    .then((res) => {
-      if (res.ok && res.status === 200) {
-        const copy = res.clone();
-        caches.open(CACHE).then((c) => c.put(e.request, copy));
-      }
+  e.respondWith((async () => {
+    const cache = await caches.open(CACHE);
+    const cached = await cache.match(e.request);
+    const fromNetwork = fetch(e.request).then((res) => {
+      if (res.ok && res.status === 200 && res.type === 'basic') cache.put(e.request, res.clone());
       return res;
-    })
-    .catch(() => caches.match(e.request).then((r) => r || caches.match('index.html'))));
+    });
+    if (cached) {
+      e.waitUntil(fromNetwork.catch(() => {}));
+      return cached;
+    }
+    try {
+      return await fromNetwork;
+    } catch {
+      return (await cache.match('index.html')) ?? Response.error();
+    }
+  })());
 });
 
 self.addEventListener('push', (e) => {

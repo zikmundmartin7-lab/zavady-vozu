@@ -5,13 +5,16 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY, VAPID_PUBLIC_KEY } from '../config.js'
 import { IMAGE_NAME } from '../codes.js';
 import { compressImage, uid } from '../model.js';
 
-await new Promise((res, rej) => {
-  const s = document.createElement('script');
-  s.src = new URL('../../vendor/supabase.js', import.meta.url).href;
-  s.onload = res;
-  s.onerror = () => rej(new Error('Nepodařilo se načíst knihovnu Supabase.'));
-  document.head.append(s);
-});
+// Knihovnu načítá už index.html (souběžně s ostatními soubory); tady jen záložně, kdyby chyběla.
+if (!window.supabase) {
+  await new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = new URL('../../vendor/supabase.js', import.meta.url).href;
+    s.onload = res;
+    s.onerror = () => rej(new Error('Nepodařilo se načíst knihovnu Supabase.'));
+    document.head.append(s);
+  });
+}
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 const BUCKET = 'attachments';
