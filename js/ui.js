@@ -393,14 +393,16 @@ export function DefectCard({ d, wagon = null, showComments = true, isNew = false
         ${showComments && html`
           <a class="btn btn-ghost" href="#/zavada/${d.id}"><${Icon} name="chat" size=${18} />
             ${d.comment_count ? plural(d.comment_count, 'komentář', 'komentáře', 'komentářů') : 'Komentovat'}</a>`}
-        <span class="spacer"></span>
-        <button class="btn btn-ghost" title="Poslat do WhatsAppu" aria-label="Poslat závadu do WhatsAppu"
-          onClick=${() => quickShare({ d, w: wagon, catalog, openDialog: (prepared) => share(d.id, { prepared }) })}><${Icon} name="share" size=${18} /></button>
-        ${resolved && can.resolve(me, d) && html`
-          <button class="btn btn-ghost" disabled=${busy} onClick=${reopen} title="Vrátit mezi neopravené"><${Icon} name="undo" size=${18} /></button>`}
-        ${can.editDefect(me, d) && html`
-          <a class="btn btn-ghost" href="#/upravit/${d.id}" title="Upravit"><${Icon} name="edit" size=${18} /></a>
-          <button class="btn btn-ghost danger" disabled=${busy} onClick=${remove} title="Smazat"><${Icon} name="trash" size=${18} /></button>`}
+        <button class="btn btn-whatsapp" title="Poslat do WhatsAppu" aria-label="Poslat závadu do WhatsAppu"
+          onClick=${() => quickShare({ d, w: wagon, catalog, openDialog: (prepared) => share(d.id, { prepared }) })}>
+          <${Icon} name="share" size=${18} /> WhatsApp</button>
+        <span class="defect-tools">
+          ${resolved && can.resolve(me, d) && html`
+            <button class="btn btn-ghost" disabled=${busy} onClick=${reopen} title="Vrátit mezi neopravené"><${Icon} name="undo" size=${18} /></button>`}
+          ${can.editDefect(me, d) && html`
+            <a class="btn btn-ghost" href="#/upravit/${d.id}" title="Upravit"><${Icon} name="edit" size=${18} /></a>
+            <button class="btn btn-ghost danger" disabled=${busy} onClick=${remove} title="Smazat"><${Icon} name="trash" size=${18} /></button>`}
+        </span>
       </div>
       ${!resolved && !resolving && can.resolve(me, d) && html`
         <button class="btn btn-ok block resolve-btn" disabled=${busy} onClick=${() => setResolving(true)}>

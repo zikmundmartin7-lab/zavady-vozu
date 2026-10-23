@@ -570,3 +570,6 @@ fieldset.field .check-row { margin: .45rem 0; color: var(--text); font-weight: 5
 .share-preview { margin-top: .4rem; }
 .share-more { margin-top: .6rem; }
 .share-more summary { cursor: pointer; color: var(--primary); font-weight: 600; padding: .4rem 0; }
+/* Úprava, smazání, vrácení: vpravo a při zalomení řádku pohromadě */
+.defect-tools { display: inline-flex; gap: .25rem; margin-left: auto; }
+.defect-tools:empty { display: none; }
