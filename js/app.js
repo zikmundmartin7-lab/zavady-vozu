@@ -3,7 +3,7 @@
 import { html, render, useEffect, useState } from '../vendor/preact-htm.js';
 import { api } from './api/index.js';
 import { can, formatNumber } from './model.js';
-import { AppCtx, Lightbox, Loading, Toasts, clearLocalCache } from './ui.js';
+import { AppCtx, Lightbox, Loading, ShareDialog, Toasts, clearLocalCache } from './ui.js';
 import { AccountView, LoginView, PendingView, RecoveryView, UsersView } from './views/account.js';
 import { DefectView } from './views/defect.js';
 import { syncOutbox } from './outbox.js';
@@ -46,7 +46,7 @@ function useRoute() {
 function Page({ route }) {
   switch (route.name) {
     case 'skupina': return html`<${GroupView} id=${Number(route.id)} />`;
-    case 'vuz': return html`<${WagonView} id=${route.id} />`;
+    case 'vuz': return html`<${WagonView} id=${route.id} params=${route.params} />`;
     case 'zavada': return html`<${DefectView} id=${route.id} />`;
     case 'nova': return html`<${DefectFormView} params=${route.params} />`;
     case 'upravit': return html`<${DefectFormView} editId=${route.id} params=${route.params} />`;
@@ -71,6 +71,7 @@ function App() {
   const [version, setVersion] = useState(0);
   const [toasts, setToasts] = useState([]);
   const [media, setMedia] = useState(null);
+  const [sharing, setSharing] = useState(null); // { id, afterSave } – okno pro sdílení závady
   const [recovery, setRecovery] = useState(false);
   const [installPrompt, setInstallPrompt] = useState(null);
   const [tabReset, setTabReset] = useState(0);
@@ -151,6 +152,7 @@ function App() {
   const ctx = {
     api, me, version, refresh, toast, reloadMe, installPrompt,
     openMedia: (items, index) => setMedia({ items, index }),
+    share: (id, opts = {}) => setSharing({ id, ...opts }),
     resetTab: () => { setTabReset((n) => n + 1); scrollTo(0, 0); },
     pendingUsers,
   };
@@ -168,6 +170,7 @@ function App() {
       ${content}
       <${Toasts} items=${toasts} dismiss=${dismiss} />
       ${media && html`<${Lightbox} ...${media} onClose=${() => setMedia(null)} />`}
+      ${sharing && me && html`<${ShareDialog} key=${sharing.id} ...${sharing} onClose=${() => setSharing(null)} />`}
     <//>`;
 }
 

@@ -149,6 +149,10 @@ export const api = {
   async getWagon(id) {
     return check(await sb.from('wagon_overview').select('*').eq('id', id).maybeSingle());
   },
+  // Otevření vozu = jeho závady jsou prohlédnuté; vrací čas předchozí návštěvy (pro štítek „Nová“)
+  async markWagonSeen(wagonId) {
+    return check(await sb.rpc('mark_wagon_seen', { p_wagon: wagonId }));
+  },
   async findWagon(number) {
     return check(await sb.from('wagon_overview').select('*').eq('number', number).maybeSingle());
   },

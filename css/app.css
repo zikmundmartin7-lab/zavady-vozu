@@ -494,3 +494,44 @@ button.code-item:hover { border-color: var(--primary); }
 .admin-links { margin-bottom: 12px; }
 .bottom-nav { grid-template-columns: repeat(4, 1fr); }
 .bottom-nav a span { white-space: nowrap; }
+
+/* ───── Nové závady (od poslední návštěvy vozu) ───── */
+
+.tile-badges { position: absolute; top: -8px; right: -8px; display: flex; gap: 6px; }
+.tile-badges .badge { position: static; }
+.new-badge {
+  display: inline-grid; place-items: center; height: 26px; padding: 0 9px; border-radius: 13px;
+  background: var(--primary); color: #fff; font-size: .8rem; font-weight: 700; white-space: nowrap;
+  box-shadow: 0 0 0 2px var(--bg), 0 2px 4px rgba(0, 0, 0, .2);
+}
+.new-badge.badge-inline { box-shadow: 0 0 0 2px rgba(255, 255, 255, .7); margin-right: 6px; }
+.new-badge.small { height: 22px; padding: 0 8px; font-size: .75rem; box-shadow: none; }
+.chip-new { background: var(--primary); color: #fff; }
+
+/* ───── Okno pro sdílení (WhatsApp) ───── */
+
+.dialog-backdrop {
+  position: fixed; inset: 0; z-index: 45; background: rgba(16, 24, 40, .45);
+  display: grid; place-items: end center;
+}
+.dialog {
+  width: min(100%, 520px); max-height: 92dvh; overflow: auto;
+  padding: 14px 16px calc(16px + env(safe-area-inset-bottom));
+  background: var(--surface); border-radius: 18px 18px 0 0; box-shadow: 0 -4px 20px rgba(0, 0, 0, .15);
+}
+@media (min-width: 600px) {
+  .dialog-backdrop { place-items: center; }
+  .dialog { border-radius: 18px; padding-bottom: 16px; }
+}
+.dialog-head { display: flex; align-items: center; gap: .5rem; margin-bottom: .6rem; }
+.dialog-head h2 { flex: 1; font-size: 1.05rem; }
+.share-preview {
+  white-space: pre-wrap; overflow-wrap: anywhere; font-size: .92rem;
+  padding: .7rem .85rem; border-radius: 10px; background: var(--bubble-mine); color: var(--text);
+}
+.check-row { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; margin: .8rem 0 .2rem; font-weight: 550; color: var(--text); }
+.check-row input { width: 20px; height: 20px; accent-color: var(--primary); }
+.btn-whatsapp { background: #1a8d4b; border-color: #1a8d4b; color: #fff; }
+fieldset.field { border: 0; padding: 0; margin: 0 0 .6rem; min-width: 0; }
+fieldset.field legend { padding: 0; }
+fieldset.field .check-row { margin: .45rem 0; color: var(--text); font-weight: 500; }

@@ -1,4 +1,4 @@
-// Jednoduchý zápis souboru Excel (.xlsx) bez knihoven: jeden list, tučná hlavička, filtr,
+// Jednoduchý zápis souboru Excel (.xlsx) bez knihoven: jeden nebo více listů, tučná hlavička, filtr,
 // ukotvený první řádek, šířky sloupců. Datum/čas se ukládá jako skutečné datum (lze třídit a filtrovat).
 // Formát XLSX = ZIP s několika XML soubory; ZIP se tu skládá bez komprese.
 
@@ -86,21 +86,41 @@ function cell(ref, value, header) {
   return `<c r="${ref}" t="inlineStr" s="3"><is><t xml:space="preserve">${esc(value)}</t></is></c>`;
 }
 
-/**
- * columns: [{ header, width?, value: (row) => string | number | Date }]
- * Vrací Blob se souborem .xlsx.
- */
-export function buildXlsx(sheetName, columns, rows) {
+// Název listu: max. 31 znaků, bez znaků [ ] : * ? / \ a bez opakování (Excel by soubor odmítl)
+function sheetNames(names) {
+  const used = new Set();
+  return names.map((raw) => {
+    const base = String(raw).replace(/[[\]:*?/\\]/g, '-').replace(/^'+|'+$/g, '').trim().slice(0, 31) || 'List';
+    let name = base;
+    for (let i = 2; used.has(name.toLowerCase()); i++) name = `${base.slice(0, 31 - String(i).length - 3)} (${i})`;
+    used.add(name.toLowerCase());
+    return name;
+  });
+}
+
+function sheetXml(columns, rows) {
   const lastCol = colName(columns.length - 1);
   const lines = [columns.map((c, i) => cell(`${colName(i)}1`, c.header, true)).join('')]
     .concat(rows.map((r, ri) => columns.map((c, ci) => cell(`${colName(ci)}${ri + 2}`, c.value(r), false)).join('')))
     .map((cells, i) => `<row r="${i + 1}">${cells}</row>`);
   const cols = columns.map((c, i) => `<col min="${i + 1}" max="${i + 1}" width="${c.width ?? 16}" customWidth="1"/>`).join('');
-  const sheet = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+  const range = `$A$1:$${lastCol}$${Math.max(rows.length + 1, 1)}`;
+  const xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
     + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
     + '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'
     + `<cols>${cols}</cols><sheetData>${lines.join('')}</sheetData>`
-    + `<autoFilter ref="A1:${lastCol}${Math.max(rows.length + 1, 1)}"/></worksheet>`;
+    + `<autoFilter ref="${range.replace(/\$/g, '')}"/></worksheet>`;
+  return { xml, range };
+}
+
+/**
+ * sheets: [{ name, columns: [{ header, width?, value: (row) => string | number | Date }], rows }]
+ * Každý list má tučnou hlavičku, filtr a ukotvený první řádek. Vrací Blob se souborem .xlsx.
+ */
+export function buildXlsx(sheets) {
+  const names = sheetNames(sheets.map((sh) => sh.name));
+  const built = sheets.map((sh) => sheetXml(sh.columns, sh.rows));
+  const n = sheets.length;
   const styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
     + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
     + '<numFmts count="1"><numFmt numFmtId="164" formatCode="d\\.m\\.yyyy\\ h:mm"/></numFmts>'
@@ -114,13 +134,15 @@ export function buildXlsx(sheetName, columns, rows) {
     + '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
     + '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>'
     + '</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
+  const idx = [...Array(n).keys()];
+  const quoted = (name) => `'${esc(name).replace(/'/g, "''")}'`;
   const files = [
     ['[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
       + '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
       + '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
       + '<Default Extension="xml" ContentType="application/xml"/>'
       + '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
-      + '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+      + idx.map((i) => `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('')
       + '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
       + '</Types>'],
     ['_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -129,15 +151,15 @@ export function buildXlsx(sheetName, columns, rows) {
       + '</Relationships>'],
     ['xl/workbook.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
       + '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
-      + `<sheets><sheet name="${esc(sheetName.slice(0, 31))}" sheetId="1" r:id="rId1"/></sheets>`
-      + `<definedNames><definedName name="_xlnm._FilterDatabase" localSheetId="0" hidden="1">'${esc(sheetName.slice(0, 31))}'!$A$1:$${lastCol}$${Math.max(rows.length + 1, 1)}</definedName></definedNames>`
+      + `<sheets>${idx.map((i) => `<sheet name="${esc(names[i])}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('')}</sheets>`
+      + `<definedNames>${idx.map((i) => `<definedName name="_xlnm._FilterDatabase" localSheetId="${i}" hidden="1">${quoted(names[i])}!${built[i].range}</definedName>`).join('')}</definedNames>`
       + '</workbook>'],
     ['xl/_rels/workbook.xml.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
       + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-      + '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
-      + '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
+      + idx.map((i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('')
+      + `<Relationship Id="rId${n + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`
       + '</Relationships>'],
-    ['xl/worksheets/sheet1.xml', sheet],
+    ...idx.map((i) => [`xl/worksheets/sheet${i + 1}.xml`, built[i].xml]),
     ['xl/styles.xml', styles],
   ];
   return zip(files.map(([name, xml]) => ({ name, data: enc.encode(xml) })));

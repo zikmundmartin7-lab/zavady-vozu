@@ -1,18 +1,38 @@
 // Detail vozu: aktivní závady, skrytá historie oprav, správa vozu pro správce.
 
-import { html, useState } from '../../vendor/preact-htm.js';
+import { html, useEffect, useRef, useState } from '../../vendor/preact-htm.js';
 import { can, checkDigit, formatNumber, foundAtOf, isValidCheckDigit, plural } from '../model.js';
 import {
   BottomNav, DefectCard, Empty, ErrorBox, Icon, Loading, TopBar, WagonNumber, replace, useApp, useLoad,
 } from '../ui.js';
 
-export function WagonView({ id }) {
-  const { api, me, refresh, toast } = useApp();
+export function WagonView({ id, params }) {
+  const { api, me, refresh, toast, version, share } = useApp();
   const wagon = useLoad(() => api.getWagon(id), [id]);
   const defects = useLoad(() => api.listDefects(id), [id]);
   const groups = useLoad(() => api.listGroups(), []);
   const [showHistory, setShowHistory] = useState(false);
   const w = wagon.data;
+
+  // Otevřením vozu jsou jeho závady prohlédnuté. Štítek „Nová“ dostanou ty vložené od minulé návštěvy;
+  // při živé změně (nová závada, zatímco je vůz otevřený) se vůz označí jako prohlédnutý znovu.
+  const [seenBefore, setSeenBefore] = useState(null);
+  const firstVisit = useRef(true);
+  useEffect(() => {
+    api.markWagonSeen(id).then((prev) => {
+      if (firstVisit.current) { firstVisit.current = false; setSeenBefore(prev); }
+    }, () => {});
+  }, [id, version]);
+  const isNew = (d) => !!seenBefore && !d.resolved_at && d.created_by !== me.id
+    && Date.parse(d.created_at) > Date.parse(seenBefore);
+
+  // Po uložení nové závady nabídnout sdílení do WhatsAppu (#/vuz/ID?sdilet=ID_ZÁVADY)
+  useEffect(() => {
+    const defectId = params?.get('sdilet');
+    if (!defectId) return;
+    share(defectId, { afterSave: true });
+    history.replaceState(null, '', `#/vuz/${id}`);
+  }, [id]);
 
   if (wagon.error) return html`<${TopBar} back="#/" title="Vůz" /><main class="page"><${ErrorBox} error=${wagon.error} /></main>`;
   if (!w) {
@@ -66,7 +86,7 @@ export function WagonView({ id }) {
       ${defects.data && html`
         <h2 class="section-title">Aktivní závady (${open.length})</h2>
         ${open.length
-          ? open.map((d) => html`<${DefectCard} key=${d.id} d=${d} />`)
+          ? open.map((d) => html`<${DefectCard} key=${d.id} d=${d} isNew=${isNew(d)} />`)
           : html`<${Empty}><${Icon} name="check" /> Na voze nejsou žádné aktivní závady.<//>`}
 
         <button class="btn btn-ghost block toggle" onClick=${() => setShowHistory(!showHistory)}

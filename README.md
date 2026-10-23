@@ -14,6 +14,8 @@ Aplikace pro evidenci závad železničních vozů. Běží v prohlížeči na p
 - **Datum a čas zjištění:** předvyplní se aktuální čas, ale jde zadat i zpětně (ne do budoucna). Měnit ho smí autor závady nebo správce. U zpětně zapsané závady karta ukazuje i skutečný čas zápisu.
 - **Komentáře** k závadě ve stylu WhatsAppu, s živými aktualizacemi.
 - **Upozornění na novou závadu** přijde všem ostatním uživatelům jako push notifikace v telefonu i při zavřené aplikaci. Kdo má aplikaci otevřenou, uvidí upozornění přímo v ní.
+- **Nové závady:** u skupin a vozů je modrý odznak „2 nové“ = neopravené závady od ostatních, které uživatel ještě neviděl. Za prohlédnuté se počítají otevřením detailu vozu; tam mají ještě štítek **Nová**. Každý uživatel má vlastní stav (tabulka `wagon_seen`).
+- **Sdílení do WhatsAppu:** tlačítko se šipkami u každé závady otevře text zprávy (vůz, skupina, kód, popis, kdy a kdo, odkaz do aplikace). Na telefonu jde poslat i s fotkami přes nabídku sdílení, jinak se otevře WhatsApp s textem. Po uložení nové závady se sdílení nabídne samo.
 - **Upozornění na nového uživatele:** po registraci přijde správcům „Nový uživatel čeká na schválení“, klepnutí otevře Správu uživatelů.
 - **Oprávnění** hlídá přímo databáze:
 
@@ -72,7 +74,7 @@ Později lze ze stejné aplikace vytvořit i instalační soubor APK nebo ji dá
 - **Historie změn:** každá změna závady, vozu, fotky, komentáře, předpisu i role uživatele se zapisuje do tabulky `audit_log` (kdo, kdy, co bylo předtím a potom). U závady: **Historie změn**, pro správce celkový přehled v **Můj účet → Historie změn**.
 - **Koš:** smazané záznamy zůstávají navždy v historii a správce je obnoví v **Můj účet → Koš** (obnoví se celá akce, např. vůz i se závadami). Soubory se při mazání neodstraňují.
 - **Zamčení:** opravenou závadu může měnit nebo smazat jen správce; ostatní ji nejdřív musí vrátit mezi neopravené. Komentovat jde dál.
-- **Přehled a export:** záložka **Přehled** (všechny závady s filtry) a tlačítko **Export do Excelu**.
+- **Přehled a export:** záložka **Přehled** (všechny závady s filtry, i více skupin najednou) a tlačítko **Export do Excelu**. V Excelu je list se všemi závadami a k tomu list pro každou skupinu. Pravidelný export na e-mail jde omezit na vybrané skupiny.
 - **Zápis bez signálu:** závada uložená bez připojení čeká v telefonu a odešle se sama.
 - **Server** (`server/`, běží na stejném serveru jako chatbot): každou noc ve 2:30 záloha databáze (`pg_dump`) a všech souborů do `/var/backups/zavady`, každou hodinu rozeslání pravidelných exportů (nastavuje správce v **Můj účet → Pravidelné exporty**). E-maily jdou přes Gmail (heslo pro aplikace). Nahrání: vyplnit `server/.env` podle `server/.env.example` a spustit `server/deploy.sh root@2.31.44.49`.
 

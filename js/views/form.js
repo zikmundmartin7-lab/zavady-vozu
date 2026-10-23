@@ -126,10 +126,11 @@ export function DefectFormView({ editId, params }) {
       }
       setBusy('Ukládám…');
       if (!wagon) wagon = found && found !== 'offline' ? found : (await api.findWagon(number)) ?? await api.createWagon(number, groupId);
-      await api.createDefect({ wagon_id: wagon.id, description, found_at, defect_code: code }, files,
+      const created = await api.createDefect({ wagon_id: wagon.id, description, found_at, defect_code: code }, files,
         (i, n) => setBusy(`Nahrávám přílohu ${i}/${n}…`));
       toast('Závada uložena. Ostatní uživatelé dostanou upozornění.');
-      replace(`#/vuz/${wagon.id}`);
+      // Ve zkušebním provozu běží souběžně skupina na WhatsAppu → hned nabídnout sdílení
+      replace(`#/vuz/${wagon.id}${created?.id ? `?sdilet=${created.id}` : ''}`);
     } catch (err) {
       // Bez signálu: novou závadu uložit v telefonu a odeslat později (úpravy jen s připojením)
       if (!editId && (err.network || !navigator.onLine) && description.trim()) {

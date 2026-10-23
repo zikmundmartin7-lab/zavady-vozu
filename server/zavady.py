@@ -4,7 +4,9 @@ Použití (na serveru v /opt/zavady-server, spouští je systemd časovače):
   python3 zavady.py check              ověří spojení (Supabase, databáze, e-mail), nic neposílá
   python3 zavady.py backup             záloha databáze + všech souborů (fotky, PDF) do BACKUP_DIR
   python3 zavady.py exports            rozešle pravidelné exporty, které jsou právě na řadě
-  python3 zavady.py send-test EMAIL    pošle hned zkušební e-mail s exportem neopravených závad
+  python3 zavady.py send-test EMAIL [SKUPINY]
+                                       pošle hned zkušební e-mail s exportem neopravených závad
+                                       (SKUPINY = čísla skupin oddělená čárkou, např. 1,2; bez nich všechny)
 
 Nastavení je v souboru .env vedle skriptu (viz .env.example). Kromě openpyxl a pg_dump
 (balíčky python3-openpyxl a postgresql-client) potřebuje jen standardní knihovnu Pythonu.
@@ -12,11 +14,13 @@ Nastavení je v souboru .env vedle skriptu (viz .env.example). Kromě openpyxl a
 import gzip
 import io
 import json
+import re
 import shutil
 import smtplib
 import subprocess
 import sys
 import traceback
+import unicodedata
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from pathlib import Path
@@ -210,12 +214,14 @@ def local_dt(iso):
     return datetime.fromisoformat(iso.replace('Z', '+00:00')).astimezone(TZ).replace(tzinfo=None)
 
 
-def load_defects(report):
+def load_defects(report, group_ids=None):
+    """Řádky exportu [(id skupiny, [hodnoty sloupců])] a seznam skupin; group_ids = jen tyto skupiny."""
     extra = {'resolved_at': 'is.null'} if report == 'open' else None
     defects = rest_all('defect_feed', 'id,wagon_id,description,defect_code,found_at,created_at,created_by_name,'
                        'resolved_at,resolved_by_name,resolution_note,comment_count', extra)
     wagons = {w['id']: w for w in rest_all('wagons', 'id,number,group_id')}
-    groups = {g['id']: g['name'] for g in rest('wagon_groups', {'select': 'id,name'})}
+    groups = rest('wagon_groups', {'select': 'id,name,sort', 'order': 'sort'})
+    names = {g['id']: g['name'] for g in groups}
     parts = {c['kod']: c['cesta'] for c in rest_all('defect_codes', 'kod,cesta', order='kod')}
     att = {}
     for a in rest_all('attachments', 'defect_id'):
@@ -223,24 +229,33 @@ def load_defects(report):
     rows = []
     for d in defects:
         w = wagons.get(d['wagon_id'], {})
-        rows.append([
-            fmt_number(w.get('number')), groups.get(w.get('group_id'), ''), d['defect_code'] or '',
+        if group_ids and w.get('group_id') not in group_ids:
+            continue
+        rows.append((w.get('group_id'), [
+            fmt_number(w.get('number')), names.get(w.get('group_id'), ''), d['defect_code'] or '',
             parts.get(d['defect_code'], '') if d['defect_code'] else '', d['description'],
             local_dt(d['found_at'] or d['created_at']), d['created_by_name'] or '', local_dt(d['created_at']),
             'Opraveno' if d['resolved_at'] else 'Neopravená', local_dt(d['resolved_at']), d['resolved_by_name'] or '',
             d['resolution_note'] or '', d['comment_count'] or 0, att.get(d['id'], 0),
-        ])
-    rows.sort(key=lambda r: r[5] or datetime.min, reverse=True)
-    return rows
+        ]))
+    rows.sort(key=lambda r: r[1][5] or datetime.min, reverse=True)
+    return rows, groups
 
 
-def build_xlsx(rows):
-    from openpyxl import Workbook
+def sheet_title(name, used):
+    """Název listu: max. 31 znaků, bez znaků [ ] : * ? / \\ a bez opakování."""
+    base = re.sub(r'[\[\]:*?/\\]', '-', name).strip("' ")[:31] or 'List'
+    title, i = base, 2
+    while title.lower() in used:
+        title = f'{base[:31 - len(str(i)) - 3]} ({i})'
+        i += 1
+    used.add(title.lower())
+    return title
+
+
+def fill_sheet(ws, rows):
     from openpyxl.styles import Alignment, Font, PatternFill
     from openpyxl.utils import get_column_letter
-    wb = Workbook()
-    ws = wb.active
-    ws.title = 'Závady'
     ws.append([c for c, _ in COLUMNS])
     for cell in ws[1]:
         cell.font = Font(bold=True)
@@ -257,22 +272,50 @@ def build_xlsx(rows):
                 cell.alignment = Alignment(vertical='top', wrap_text=True)
     ws.freeze_panes = 'A2'
     ws.auto_filter.ref = f'A1:{get_column_letter(len(COLUMNS))}{max(len(rows) + 1, 1)}'
+
+
+def build_xlsx(rows, groups, group_ids=None):
+    """První list se všemi závadami, pak list pro každou skupinu (je-li jich v exportu víc).
+    Vybrané skupiny mají list vždy (i prázdný), u exportu všech skupin jen ty, kde jsou závady."""
+    from openpyxl import Workbook
+    present = [g for g in groups if (g['id'] in group_ids if group_ids else any(gid == g['id'] for gid, _ in rows))]
+    if len(present) == 1:
+        sheets = [(present[0]['name'], [r for _, r in rows])]
+    else:
+        sheets = [('Všechny závady', [r for _, r in rows])]
+        sheets += [(g['name'], [r for gid, r in rows if gid == g['id']]) for g in present]
+    wb = Workbook()
+    wb.remove(wb.active)
+    used = set()
+    for name, data in sheets:
+        fill_sheet(wb.create_sheet(sheet_title(name, used)), data)
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
 
 
-def send_export(to, report):
-    rows = load_defects(report)
+def slug(text):
+    text = unicodedata.normalize('NFKD', text).encode('ascii', 'ignore').decode().lower()
+    return re.sub(r'[^a-z0-9]+', '-', text).strip('-')
+
+
+def send_export(to, report, group_ids=None):
+    rows, groups = load_defects(report, group_ids)
+    chosen = [g['name'] for g in groups if group_ids and g['id'] in group_ids]
     today = datetime.now(TZ)
     label = 'neopravené závady' if report == 'open' else 'všechny závady'
-    name = f'zavady-{"neopravene" if report == "open" else "vsechny"}-{today:%Y-%m-%d}.xlsx'
-    open_count = sum(1 for r in rows if r[8] == 'Neopravená')
-    text = (f'Dobrý den,\n\nv příloze je přehled: {label} ke dni {today:%-d. %-m. %Y %-H:%M}.\n'
-            f'Počet závad v přehledu: {len(rows)} (z toho neopravených: {open_count}).\n\n'
+    which = f' ({", ".join(chosen)})' if chosen else ''
+    parts = ['neopravene' if report == 'open' else 'vsechny']
+    if chosen:
+        parts.append(f'{len(chosen)}-skupin' if len(chosen) > 3 else '-'.join(slug(n) for n in chosen))
+    name = f'zavady-{"-".join(parts)}-{today:%Y-%m-%d}.xlsx'
+    open_count = sum(1 for _, r in rows if r[8] == 'Neopravená')
+    text = (f'Dobrý den,\n\nv příloze je přehled: {label}{which} ke dni {today:%-d. %-m. %Y %-H:%M}.\n'
+            f'Počet závad v přehledu: {len(rows)} (z toho neopravených: {open_count}).\n'
+            'V souboru je list se všemi závadami a k tomu list pro každou skupinu vozů.\n\n'
             f'Aplikace: {APP_URL}\n\nTento e-mail posílá automaticky aplikace Závady vozů. '
             'Nastavení pravidelných exportů: Můj účet → Pravidelné exporty na e-mail.\n')
-    send_mail(to, f'Závady vozů – {label} ({today:%-d. %-m. %Y})', text, (name, build_xlsx(rows)))
+    send_mail(to, f'Závady vozů – {label}{which} ({today:%-d. %-m. %Y})', text, (name, build_xlsx(rows, groups, group_ids)))
     return len(rows)
 
 
@@ -308,10 +351,10 @@ def exports():
         if slot <= since:
             continue
         try:
-            n = send_export(s['recipient'], s['report'])
+            n = send_export(s['recipient'], s['report'], s.get('group_ids'))
             rest('export_schedules', {'id': f'eq.{s["id"]}'}, 'PATCH',
                  {'last_sent_at': datetime.now(timezone.utc).isoformat(), 'last_error': None})
-            print(f'Odesláno: {s["recipient"]} ({n} závad)')
+            print(f'Odesláno: {s["recipient"]} (počet závad: {n})')
         except Exception as e:                 # noqa: BLE001 – ostatní exporty mají proběhnout
             msg = str(e)[:300]
             rest('export_schedules', {'id': f'eq.{s["id"]}'}, 'PATCH', {'last_error': msg})
@@ -367,7 +410,8 @@ def main():
         elif cmd == 'exports':
             exports()
         elif cmd == 'send-test' and len(sys.argv) > 2:
-            print(f'Odesláno: {send_export(sys.argv[2], "open")} závad na {sys.argv[2]}')
+            ids = [int(x) for x in sys.argv[3].split(',')] if len(sys.argv) > 3 else None
+            print(f'Odesláno na {sys.argv[2]}, počet závad: {send_export(sys.argv[2], "open", ids)}')
         else:
             print(__doc__)
             sys.exit(2)

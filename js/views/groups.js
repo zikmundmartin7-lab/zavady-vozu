@@ -3,8 +3,8 @@
 import { html, useState } from '../../vendor/preact-htm.js';
 import { plural } from '../model.js';
 import {
-  Badge, BottomNav, Empty, ErrorBox, Fab, Icon, Loading, OpenCount, OutboxBanner, TopBar, UserButton, WagonNumber, WagonSearch,
-  useApp, useLoad,
+  Badge, BottomNav, Empty, ErrorBox, Fab, Icon, Loading, NewBadge, OpenCount, OutboxBanner, TopBar, UserButton, WagonNumber,
+  WagonSearch, useApp, useLoad,
 } from '../ui.js';
 
 export function HomeView() {
@@ -27,7 +27,7 @@ export function HomeView() {
               <span class="group-sub">${g.open_count
                 ? plural(g.open_count, 'otevřená závada', 'otevřené závady', 'otevřených závad')
                 : 'bez otevřených závad'}</span>
-              <${Badge} n=${g.open_count} />
+              <span class="tile-badges"><${NewBadge} n=${g.new_count} /><${Badge} n=${g.open_count} /></span>
             </a>`)}
         </nav>`}
     </main>
@@ -56,12 +56,15 @@ export function GroupView({ id }) {
   const [q, setQ] = useState('');
   const [showAll, setShowAll] = useState(false);
   const g = groups.data?.find((x) => x.id === id);
-  const withDefects = wagons.data?.filter((w) => w.open_count > 0) ?? [];
+  // Vozy s novými závadami nahoře, jinak pořadí ze serveru (podle počtu otevřených závad)
+  const withDefects = wagons.data?.filter((w) => w.open_count > 0)
+    .sort((a, b) => (b.new_count > 0) - (a.new_count > 0)) ?? [];
   const others = wagons.data?.filter((w) => !w.open_count) ?? [];
 
   return html`
     <${TopBar} back="#/" title=${g?.name ?? 'Skupina'}
       sub=${g && (g.open_count ? plural(g.open_count, 'otevřená závada', 'otevřené závady', 'otevřených závad') : 'bez otevřených závad')}>
+      <${NewBadge} n=${g?.new_count} class="badge-inline" />
       <${Badge} n=${g?.open_count} class="badge-inline" />
     <//>
     <main class="page with-nav">

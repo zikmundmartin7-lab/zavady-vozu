@@ -1,7 +1,7 @@
 // Sdílené komponenty a pomocné funkce pro obrazovky.
 
 import { html, createContext, useContext, useEffect, useRef, useState } from '../vendor/preact-htm.js';
-import { can, digitsOnly, foundAtOf, formatDateTime, plural, splitNumber } from './model.js';
+import { can, digitsOnly, foundAtOf, formatDateTime, formatNumber, plural, splitNumber } from './model.js';
 import { matchRanges } from './codes.js';
 import { outbox, syncOutbox } from './outbox.js';
 
@@ -88,6 +88,7 @@ const ICONS = {
   clipboard: 'M9 3h6v3H9zM7 4.5H5V21h14V4.5h-2M8.5 12.5l2 2 4.5-4.5M8.5 17.5h7',
   lock: 'M6 11h12v10H6zM8.5 11V7.5a3.5 3.5 0 0 1 7 0V11',
   cloud: 'M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 9.5a4 4 0 0 1-.5 7.97zM12 11v6M9.5 14.5 12 17l2.5-2.5',
+  share: `${circle(18, 5, 3)}${circle(6, 12, 3)}${circle(18, 19, 3)}M8.6 13.5l6.8 4M15.4 6.5l-6.8 4`,
 };
 export const Icon = ({ name, size = 20, class: cls = '' }) => html`
   <svg class="icon ${cls}" width=${size} height=${size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -98,6 +99,10 @@ export const Icon = ({ name, size = 20, class: cls = '' }) => html`
 export const Badge = ({ n, class: cls = '' }) =>
   n > 0 ? html`<span class="badge ${cls}" aria-label=${plural(n, 'otevřená závada', 'otevřené závady', 'otevřených závad')}>${n > 99 ? '99+' : n}</span>` : null;
 
+// Počet závad, které uživatel ještě neviděl (od jeho poslední návštěvy vozu)
+export const NewBadge = ({ n, class: cls = '' }) =>
+  n > 0 ? html`<span class="new-badge ${cls}" aria-label=${plural(n, 'nová závada', 'nové závady', 'nových závad')}>${plural(n > 99 ? 99 : n, 'nová', 'nové', 'nových')}</span>` : null;
+
 export const WagonNumber = ({ number, class: cls = '' }) => {
   const [head, tail] = splitNumber(number);
   return html`<span class="wagon-number ${cls}">${head}<b>${tail}</b></span>`;
@@ -105,7 +110,9 @@ export const WagonNumber = ({ number, class: cls = '' }) => {
 
 export function OpenCount({ w }) {
   if (!w.open_count) return html`<span class="count count-ok"><${Icon} name="check" size=${14} /> bez závad</span>`;
-  return html`<span class="count count-open">${plural(w.open_count, 'závada', 'závady', 'závad')}</span>`;
+  return html`
+    <${NewBadge} n=${w.new_count} class="small" />
+    <span class="count count-open">${plural(w.open_count, 'závada', 'závady', 'závad')}</span>`;
 }
 
 // Zvýrazní v textu hledaná slova (bez ohledu na diakritiku)
@@ -279,8 +286,8 @@ export function WagonSearch({ groupId, onQuery }) {
 
 // ───── Karta závady ─────
 
-export function DefectCard({ d, showComments = true }) {
-  const { api, me, refresh, toast, openMedia } = useApp();
+export function DefectCard({ d, showComments = true, isNew = false }) {
+  const { api, me, refresh, toast, openMedia, share } = useApp();
   const [resolving, setResolving] = useState(false);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
@@ -315,6 +322,7 @@ export function DefectCard({ d, showComments = true }) {
   return html`
     <article class="defect defect-${color}">
       <div class="defect-head">
+        ${isNew && html`<span class="chip chip-new" title="Vložená od vaší poslední návštěvy vozu">Nová</span>`}
         ${resolved
           ? html`<span class="chip chip-ok"><${Icon} name="check" size=${14} /> Opraveno</span>`
           : html`<span class="chip chip-open">Neopravená</span>`}
@@ -364,6 +372,7 @@ export function DefectCard({ d, showComments = true }) {
           <a class="btn btn-ghost" href="#/zavada/${d.id}"><${Icon} name="chat" size=${18} />
             ${d.comment_count ? plural(d.comment_count, 'komentář', 'komentáře', 'komentářů') : 'Komentovat'}</a>`}
         <span class="spacer"></span>
+        <button class="btn btn-ghost" onClick=${() => share(d.id)} title="Sdílet (WhatsApp…)" aria-label="Sdílet závadu"><${Icon} name="share" size=${18} /></button>
         ${resolved && can.resolve(me, d) && html`
           <button class="btn btn-ghost" disabled=${busy} onClick=${reopen} title="Vrátit mezi neopravené"><${Icon} name="undo" size=${18} /></button>`}
         ${can.editDefect(me, d) && html`
@@ -374,6 +383,121 @@ export function DefectCard({ d, showComments = true }) {
         <button class="btn btn-ok block resolve-btn" disabled=${busy} onClick=${() => setResolving(true)}>
           <${Icon} name="check" size=${18} /> Označit jako opravené</button>`}
     </article>`;
+}
+
+// ───── Sdílení závady do WhatsAppu (nebo jinam přes nabídku sdílení telefonu) ─────
+
+// Text zprávy; *hvězdičky* = tučně ve WhatsAppu. Text z katalogu kódů se nesdílí (katalog je jen pro členy).
+export function defectShareText(d, w) {
+  const who = (name) => name || 'neznámý uživatel';
+  const lines = [`*Závada – vůz ${formatNumber(w.number)}*${w.group_name ? ` (${w.group_name})` : ''}`];
+  if (d.defect_code) lines.push(`Kód závady: ${d.defect_code}`);
+  lines.push(d.description.trim());
+  lines.push(`Zjištěno ${formatDateTime(foundAtOf(d))} · ${who(d.created_by_name)}`);
+  if (d.resolved_at) {
+    lines.push(`Opraveno ${formatDateTime(d.resolved_at)} · ${who(d.resolved_by_name)}${d.resolution_note ? ` – ${d.resolution_note}` : ''}`);
+  }
+  const videos = (d.attachments ?? []).filter((a) => a.kind === 'video').length;
+  if (videos) lines.push(`${plural(videos, 'video', 'videa', 'videí')} v aplikaci`);
+  lines.push(`V aplikaci: ${location.origin}${location.pathname}#/vuz/${d.wagon_id}`);
+  return lines.join('\n');
+}
+
+// Fotky závady jako soubory pro sdílení (videa ne – bývají velká)
+async function photoFiles(d, w) {
+  const out = [];
+  const photos = (d.attachments ?? []).filter((a) => a.kind !== 'video');
+  for (const [i, a] of photos.entries()) {
+    try {
+      const blob = await (await fetch(a.url)).blob();
+      const type = blob.type || 'image/jpeg';
+      const ext = type.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg';
+      out.push(new File([blob], `zavada-${w.number.slice(-4)}-${i + 1}.${ext}`, { type }));
+    } catch { /* fotku se nepodařilo stáhnout – sdílí se bez ní */ }
+  }
+  return out;
+}
+
+export function ShareDialog({ id, afterSave = false, onClose }) {
+  const { api, toast } = useApp();
+  const [data, setData] = useState(null);    // { d, w, text }
+  const [files, setFiles] = useState(null);  // null = připravuji fotky
+  const [withPhotos, setWithPhotos] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const d = await api.getDefect(id);
+      if (!d) throw new Error('Závada nebyla nalezena (možná byla smazána).');
+      const w = await api.getWagon(d.wagon_id);
+      if (!alive) return;
+      setData({ d, w, text: defectShareText(d, w) });
+      const f = await photoFiles(d, w);
+      if (alive) setFiles(f.length && navigator.canShare?.({ files: f }) ? f : []);
+    })().catch((e) => alive && setError(e));
+    const onKey = (e) => e.key === 'Escape' && onClose();
+    addEventListener('keydown', onKey);
+    return () => { alive = false; removeEventListener('keydown', onKey); };
+  }, [id]);
+
+  const text = data?.text ?? '';
+  const photoCount = (data?.d.attachments ?? []).filter((a) => a.kind !== 'video').length;
+  const canNative = typeof navigator.share === 'function';
+  const preparing = withPhotos && photoCount > 0 && files === null;
+
+  async function shareNative() {
+    const shared = withPhotos ? files ?? [] : [];
+    try {
+      // WhatsApp na iPhonu k fotkám text někdy nepřipojí – ať je aspoň ve schránce
+      if (shared.length) navigator.clipboard?.writeText(text).catch(() => {});
+      await navigator.share(shared.length ? { text, files: shared } : { text });
+      onClose();
+    } catch (e) {
+      if (e.name !== 'AbortError') toast(`Sdílení se nepovedlo: ${e.message}`, { kind: 'error' });
+    }
+  }
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('Text zprávy je zkopírovaný.');
+    } catch {
+      toast('Kopírování se nepovedlo.', { kind: 'error' });
+    }
+  }
+
+  return html`
+    <div class="dialog-backdrop" onClick=${(e) => e.target === e.currentTarget && onClose()}>
+      <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="share-title">
+        <div class="dialog-head">
+          <h2 id="share-title">${afterSave ? 'Závada uložena – poslat i do WhatsAppu?' : 'Sdílet závadu'}</h2>
+          <button class="icon-btn" onClick=${onClose} aria-label="Zavřít"><${Icon} name="x" /></button>
+        </div>
+        <${ErrorBox} error=${error} />
+        ${!data && !error && html`<${Loading} />`}
+        ${data && html`
+          <div class="share-preview">${text}</div>
+          ${photoCount > 0 && (canNative
+            ? html`
+              <label class="check-row">
+                <input type="checkbox" checked=${withPhotos} onChange=${(e) => setWithPhotos(e.currentTarget.checked)} />
+                Přiložit ${plural(photoCount, 'fotku', 'fotky', 'fotek')}
+                ${preparing && html`<span class="muted small">(připravuji…)</span>`}
+                ${files?.length === 0 && withPhotos && html`<span class="muted small">(tento telefon fotky sdílet neumí)</span>`}
+              </label>`
+            : html`<p class="muted small">Fotky odsud poslat nejde – pošlete je z telefonu.</p>`)}
+          ${canNative && html`
+            <button class="btn btn-primary block" disabled=${preparing} onClick=${shareNative}>
+              <${Icon} name="share" size=${18} /> Sdílet… (WhatsApp, e-mail, …)</button>`}
+          <a class="btn btn-whatsapp block" href=${`https://wa.me/?text=${encodeURIComponent(text)}`} target="_blank" rel="noopener">
+            Otevřít WhatsApp${canNative ? ' (jen text)' : ''}</a>
+          <button class="btn block" onClick=${copy}><${Icon} name="clipboard" size=${18} /> Kopírovat text</button>
+          <p class="muted small">${canNative
+            ? 'V nabídce sdílení vyberte WhatsApp a pak skupinu. Pokud se na iPhonu k fotkám nepřipojí text, je už zkopírovaný – stačí ho ve WhatsAppu vložit.'
+            : 'Otevře se WhatsApp s připraveným textem, vyberete jen skupinu.'}</p>
+          ${afterSave && html`<button class="btn btn-ghost block" onClick=${onClose}>Teď ne</button>`}`}
+      </div>
+    </div>`;
 }
 
 // ───── Prohlížeč fotek a videí ─────

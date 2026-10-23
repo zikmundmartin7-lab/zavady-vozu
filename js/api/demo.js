@@ -41,7 +41,12 @@ let state = load();
 function load() {
   try {
     const s = JSON.parse(localStorage.getItem(KEY));
-    if (s?.version === 2) return { audit: [], schedules: [], ...s };
+    if (s?.version === 2) {
+      // starší uložená ukázka: nové závady počítat až od teď
+      const since = new Date().toISOString();
+      s.profiles.forEach((p) => { p.news_since ??= since; });
+      return { audit: [], schedules: [], seen: {}, ...s };
+    }
   } catch { /* poškozená data → nová ukázka */ }
   const s = seed();
   persist(s);
@@ -134,6 +139,14 @@ function removeRows(tx, tbl, rows) {
   state[STATE_KEY[tbl]] = state[STATE_KEY[tbl]].filter((r) => !ids.has(r.id));
 }
 
+// Neopravené závady od ostatních vložené od poslední návštěvy vozu (jako group_overview.new_count)
+function newCount(wagonIds) {
+  const m = me();
+  if (!m) return 0;
+  return state.defects.filter((d) => wagonIds.includes(d.wagon_id) && !d.resolved_at && d.created_by !== m.id
+    && d.created_at > (state.seen[`${m.id}|${d.wagon_id}`] ?? m.news_since)).length;
+}
+
 function wagonOverview(w) {
   const ds = state.defects.filter((d) => d.wagon_id === w.id);
   const open = ds.filter((d) => !d.resolved_at);
@@ -142,6 +155,7 @@ function wagonOverview(w) {
     last4: w.number.slice(-4),
     group_name: groupName(w.group_id),
     open_count: open.length,
+    new_count: newCount([w.id]),
     resolved_count: ds.length - open.length,
     last_defect_at: ds.map((d) => d.created_at).sort().at(-1) ?? null,
   };
@@ -214,6 +228,7 @@ export const api = {
       ...g,
       open_count: state.defects.filter((d) => !d.resolved_at
         && state.wagons.find((w) => w.id === d.wagon_id)?.group_id === g.id).length,
+      new_count: newCount(state.wagons.filter((w) => w.group_id === g.id).map((w) => w.id)),
     }));
   },
   async searchWagons(q, groupId) {
@@ -230,6 +245,14 @@ export const api = {
     requireMember();
     const w = state.wagons.find((x) => x.id === id);
     return w ? wagonOverview(w) : null;
+  },
+  async markWagonSeen(wagonId) {
+    const m = requireMember();
+    const key = `${m.id}|${wagonId}`;
+    const prev = state.seen[key] ?? m.news_since;
+    state.seen[key] = new Date().toISOString();
+    persist(state); // bez živé aktualizace – jinak by se obrazovka znovu načítala dokola
+    return prev;
   },
   async findWagon(number) {
     requireMember();
@@ -572,5 +595,8 @@ function seed() {
       }
     }
   }
-  return { version: 2, profiles, wagons, defects, attachments: [], comments, audit: [], schedules: [] };
+  // Nové závady (odznak „nové“) se v ukázce počítají za poslední 3 dny
+  const since = new Date(now - 3 * 864e5).toISOString();
+  profiles.forEach((p) => { p.news_since = since; });
+  return { version: 2, profiles, wagons, defects, attachments: [], comments, audit: [], schedules: [], seen: {} };
 }

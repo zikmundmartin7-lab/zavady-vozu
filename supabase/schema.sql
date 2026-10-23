@@ -21,7 +21,8 @@ create table public.profiles (
   full_name   text not null default '',
   role        text not null default 'pending'
               check (role in ('pending', 'user', 'repairer', 'admin')),
-  created_at  timestamptz not null default now()
+  created_at  timestamptz not null default now(),
+  news_since  timestamptz not null default now()   -- od kdy se uživateli počítají nové závady
 );
 
 create or replace function public.my_role() returns text
@@ -222,12 +223,46 @@ create table public.push_subscriptions (
 
 -- ───────────────────────── Přehledy (počty pro odznaky) ─────────────────────────
 
+-- Kdy uživatel naposledy otevřel který vůz (zapisuje funkce mark_wagon_seen)
+create table public.wagon_seen (
+  user_id   uuid not null references public.profiles on delete cascade default auth.uid(),
+  wagon_id  uuid not null references public.wagons on delete cascade,
+  seen_at   timestamptz not null default now(),
+  primary key (user_id, wagon_id)
+);
+
+-- Otevření vozu: zapíše „prohlédnuto teď“ a vrátí předchozí čas (aplikace podle něj označí nové závady)
+create or replace function public.mark_wagon_seen(p_wagon uuid) returns timestamptz
+language plpgsql security definer set search_path = '' as $$
+declare
+  prev timestamptz;
+begin
+  if not public.is_member() then
+    raise exception 'Nemáte oprávnění.';
+  end if;
+  select coalesce(
+           (select s.seen_at from public.wagon_seen s where s.user_id = auth.uid() and s.wagon_id = p_wagon),
+           (select p.news_since from public.profiles p where p.id = auth.uid()))
+    into prev;
+  insert into public.wagon_seen (user_id, wagon_id, seen_at) values (auth.uid(), p_wagon, now())
+    on conflict (user_id, wagon_id) do update set seen_at = excluded.seen_at;
+  return prev;
+end $$;
+revoke execute on function public.mark_wagon_seen(uuid) from public, anon;
+grant execute on function public.mark_wagon_seen(uuid) to authenticated;
+
+-- new_count = neopravené závady od ostatních vložené od chvíle, kdy uživatel vůz naposledy otevřel
 create view public.group_overview with (security_invoker = true) as
 select g.id, g.name, g.sort,
-       count(d.id) filter (where d.resolved_at is null) as open_count
+       count(d.id) filter (where d.resolved_at is null) as open_count,
+       count(d.id) filter (where d.resolved_at is null
+                             and d.created_by is distinct from me.id
+                             and d.created_at > coalesce(ws.seen_at, me.news_since)) as new_count
 from public.wagon_groups g
 left join public.wagons w on w.group_id = g.id
 left join public.defects d on d.wagon_id = w.id
+left join public.wagon_seen ws on ws.wagon_id = w.id and ws.user_id = (select auth.uid())
+left join public.profiles me on me.id = (select auth.uid())
 group by g.id;
 
 create view public.wagon_overview with (security_invoker = true) as
@@ -236,10 +271,15 @@ select w.id, w.number, w.last4, w.group_id, w.note, w.created_at,
        count(d.id) filter (where d.resolved_at is null)     as open_count,
        coalesce(max(d.severity) filter (where d.resolved_at is null), 0) as max_severity,
        count(d.id) filter (where d.resolved_at is not null) as resolved_count,
-       max(d.created_at) as last_defect_at
+       max(d.created_at) as last_defect_at,
+       count(d.id) filter (where d.resolved_at is null
+                             and d.created_by is distinct from me.id
+                             and d.created_at > coalesce(ws.seen_at, me.news_since)) as new_count
 from public.wagons w
 join public.wagon_groups g on g.id = w.group_id
 left join public.defects d on d.wagon_id = w.id
+left join public.wagon_seen ws on ws.wagon_id = w.id and ws.user_id = (select auth.uid())
+left join public.profiles me on me.id = (select auth.uid())
 group by w.id, g.name;
 
 create view public.defect_feed with (security_invoker = true) as
@@ -399,6 +439,7 @@ create table if not exists public.export_schedules (
   weekday       smallint check (weekday between 1 and 7),      -- 1 = pondělí (u týdenního)
   monthday      smallint check (monthday between 1 and 28),    -- den v měsíci (u měsíčního)
   hour          smallint not null default 7 check (hour between 0 and 23),
+  group_ids     smallint[],                                    -- jen vybrané skupiny vozů (prázdné = všechny)
   active        boolean not null default true,
   last_sent_at  timestamptz,
   last_error    text,
@@ -419,6 +460,10 @@ alter table public.defect_codes       enable row level security;
 alter table public.regulations        enable row level security;
 alter table public.audit_log          enable row level security;
 alter table public.export_schedules   enable row level security;
+alter table public.wagon_seen         enable row level security;
+
+create policy "prohlédnuté vozy: jen vlastní" on public.wagon_seen
+  for select to authenticated using (user_id = (select auth.uid()));
 
 create policy "profil: vlastní nebo člen vidí" on public.profiles
   for select to authenticated using (id = auth.uid() or public.is_member());

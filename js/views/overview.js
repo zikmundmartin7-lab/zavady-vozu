@@ -10,12 +10,16 @@ import {
 const STATUS = { open: 'Neopravené', resolved: 'Opravené', all: 'Všechny' };
 const PAGE = 150;
 
-/** Export seznamu závad do Excelu (stejné sloupce jako pravidelný export ze serveru). */
-export async function exportDefects(rows, catalog, label) {
+/**
+ * Export seznamu závad do Excelu (stejné sloupce jako pravidelný export ze serveru).
+ * První list obsahuje všechny závady, pak má každá skupina vozů vlastní list (je-li jich víc).
+ * chosen = vybrané skupiny (list mají vždy, i prázdný); bez výběru jen skupiny, kde jsou závady.
+ */
+export async function exportDefects(rows, catalog, label, groups = [], chosen = []) {
   const { buildXlsx, download } = await import('../xlsx.js');
   const parts = new Map((catalog ?? []).map((c) => [c.kod, c.cesta]));
   const date = (iso) => (iso ? new Date(iso) : '');
-  const blob = buildXlsx('Závady', [
+  const columns = [
     { header: 'Číslo vozu', width: 18, value: (r) => formatNumber(r.number) },
     { header: 'Skupina', width: 16, value: (r) => r.group_name },
     { header: 'Kód závady', width: 11, value: (r) => r.defect_code ?? '' },
@@ -30,7 +34,13 @@ export async function exportDefects(rows, catalog, label) {
     { header: 'Poznámka k opravě', width: 30, value: (r) => r.resolution_note ?? '' },
     { header: 'Komentářů', width: 11, value: (r) => r.comment_count ?? 0 },
     { header: 'Fotek a videí', width: 13, value: (r) => r.attachment_count ?? 0 },
-  ], rows);
+  ];
+  const present = chosen.length ? chosen : groups.filter((g) => rows.some((r) => r.group_id === g.id));
+  const sheets = present.length === 1
+    ? [{ name: present[0].name, rows }]
+    : [{ name: 'Všechny závady', rows },
+      ...present.map((g) => ({ name: g.name, rows: rows.filter((r) => r.group_id === g.id) }))];
+  const blob = buildXlsx(sheets.map((sh) => ({ ...sh, columns })));
   const day = new Date().toISOString().slice(0, 10);
   download(blob, `zavady-${label}-${day}.xlsx`);
 }
@@ -41,7 +51,7 @@ export function OverviewView() {
   const [status, setStatus] = useState('open');
   const data = useLoad(() => api.listOverview(status), [status]);
   const groups = useLoad(() => api.listGroups(), [], 'groups');
-  const [groupId, setGroupId] = useState(null);
+  const [groupIds, setGroupIds] = useState([]); // prázdné = všechny skupiny
   const [q, setQ] = useState('');
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
@@ -56,7 +66,7 @@ export function OverviewView() {
     const fromT = from ? Date.parse(`${from}T00:00`) : null;
     const toT = to ? Date.parse(`${to}T23:59:59`) : null;
     const out = list.filter((r) => {
-      if (groupId && r.group_id !== groupId) return false;
+      if (groupIds.length && !groupIds.includes(r.group_id)) return false;
       const t = Date.parse(foundAtOf(r));
       if (fromT && t < fromT) return false;
       if (toT && t > toT) return false;
@@ -72,12 +82,16 @@ export function OverviewView() {
       wagon: (a, b) => a.number.slice(-4).localeCompare(b.number.slice(-4)) || a.number.localeCompare(b.number),
     }[sort];
     return out.sort(by);
-  }, [data.data, groupId, q, from, to, sort]);
+  }, [data.data, groupIds, q, from, to, sort]);
 
   async function doExport() {
     setBusy(true);
     try {
-      await exportDefects(rows, catalog, { open: 'neopravene', resolved: 'opravene', all: 'vsechny' }[status]);
+      const chosen = (groups.data ?? []).filter((g) => groupIds.includes(g.id));
+      const slug = (t) => fold(t).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      const label = [{ open: 'neopravene', resolved: 'opravene', all: 'vsechny' }[status],
+        chosen.length > 3 ? `${chosen.length}-skupin` : chosen.map((g) => slug(g.name)).join('-')].filter(Boolean).join('-');
+      await exportDefects(rows, catalog, label, groups.data ?? [], chosen);
     } catch (err) {
       toast(err.message, { kind: 'error' });
     } finally {
@@ -85,7 +99,8 @@ export function OverviewView() {
     }
   }
 
-  const filtersActive = groupId || q || from || to;
+  const filtersActive = groupIds.length || q || from || to;
+  const toggleGroup = (id) => setGroupIds(groupIds.includes(id) ? groupIds.filter((x) => x !== id) : [...groupIds, id]);
 
   return html`
     <${TopBar} title="Přehled závad" sub="Všechny vozy"><${UserButton} /><//>
@@ -101,9 +116,11 @@ export function OverviewView() {
           onInput=${(e) => { setQ(e.currentTarget.value); setLimit(PAGE); }} />
       </label>
       <div class="chips-select">
-        <button type="button" class="chip-btn ${!groupId ? 'active' : ''}" onClick=${() => setGroupId(null)}>Všechny skupiny</button>
+        <button type="button" class="chip-btn ${!groupIds.length ? 'active' : ''}" aria-pressed=${!groupIds.length}
+          onClick=${() => setGroupIds([])}>Všechny skupiny</button>
         ${groups.data?.map((g) => html`
-          <button type="button" key=${g.id} class="chip-btn ${groupId === g.id ? 'active' : ''}" onClick=${() => setGroupId(g.id)}>${g.name}</button>`)}
+          <button type="button" key=${g.id} class="chip-btn ${groupIds.includes(g.id) ? 'active' : ''}"
+            aria-pressed=${groupIds.includes(g.id)} onClick=${() => toggleGroup(g.id)}>${g.name}</button>`)}
       </div>
       <button type="button" class="link-btn" onClick=${() => setMore(!more)}>${more ? 'Skrýt další filtry' : 'Další filtry (období, řazení)'}</button>
       ${more && html`
@@ -116,7 +133,7 @@ export function OverviewView() {
               <option value="old">Nejstarší nahoře</option>
               <option value="wagon">Podle posledního čtyřčíslí vozu</option>
             </select></label>
-          ${filtersActive && html`<button type="button" class="btn" onClick=${() => { setGroupId(null); setQ(''); setFrom(''); setTo(''); }}>Zrušit filtry</button>`}
+          ${filtersActive && html`<button type="button" class="btn" onClick=${() => { setGroupIds([]); setQ(''); setFrom(''); setTo(''); }}>Zrušit filtry</button>`}
         </div>`}
 
       <div class="overview-bar">

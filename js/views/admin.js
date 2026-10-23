@@ -105,16 +105,24 @@ export function AuditView() {
 const WEEKDAYS = ['pondělí', 'úterý', 'středa', 'čtvrtek', 'pátek', 'sobota', 'neděle'];
 const REPORTS = { open: 'Neopravené závady', all: 'Všechny závady' };
 
-function describeSchedule(s) {
+function describeSchedule(s, groups) {
   const when = s.frequency === 'daily' ? 'každý den'
     : s.frequency === 'weekly' ? `každý týden v ${WEEKDAYS[(s.weekday ?? 1) - 1]}`
       : `každý měsíc ${s.monthday ?? 1}. den`;
-  return `${REPORTS[s.report]} · ${when} v ${s.hour}:00`;
+  const which = s.group_ids?.length
+    ? s.group_ids.map((id) => groups?.find((g) => g.id === id)?.name ?? `skupina ${id}`).join(', ')
+    : 'všechny skupiny';
+  return `${REPORTS[s.report]} (${which}) · ${when} v ${s.hour}:00`;
 }
 
-function ScheduleForm({ initial, onDone }) {
+function ScheduleForm({ initial, groups, onDone }) {
   const { api, toast } = useApp();
-  const [f, setF] = useState(initial ?? { recipient: '', report: 'open', frequency: 'weekly', weekday: 1, monthday: 1, hour: 7 });
+  const [f, setF] = useState(initial ?? { recipient: '', report: 'open', frequency: 'weekly', weekday: 1, monthday: 1, hour: 7, group_ids: null });
+  const allGroups = !f.group_ids;
+  const toggleGroup = (id) => {
+    const ids = f.group_ids ?? [];
+    setF({ ...f, group_ids: ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id] });
+  };
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const set = (k) => (e) => setF({ ...f, [k]: e.currentTarget.type === 'number' || /day|hour/.test(k) ? Number(e.currentTarget.value) : e.currentTarget.value });
@@ -125,8 +133,10 @@ function ScheduleForm({ initial, onDone }) {
     setError(null);
     try {
       if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(f.recipient.trim())) throw new Error('Zadejte platný e-mail.');
+      if (f.group_ids && !f.group_ids.length) throw new Error('Vyberte aspoň jednu skupinu vozů.');
       await api.saveExportSchedule({
         id: f.id, recipient: f.recipient.trim(), report: f.report, frequency: f.frequency, hour: f.hour,
+        group_ids: f.group_ids?.length ? [...f.group_ids].sort((a, b) => a - b) : null,
         weekday: f.frequency === 'weekly' ? f.weekday : null, monthday: f.frequency === 'monthly' ? f.monthday : null,
         active: f.active ?? true,
       });
@@ -148,6 +158,18 @@ function ScheduleForm({ initial, onDone }) {
         <select value=${f.report} onChange=${set('report')}>
           ${Object.entries(REPORTS).map(([k, v]) => html`<option value=${k}>${v}</option>`)}
         </select></label>
+      <fieldset class="field">
+        <legend>Skupiny vozů</legend>
+        <label class="check-row">
+          <input type="checkbox" checked=${allGroups} onChange=${(e) => setF({ ...f, group_ids: e.currentTarget.checked ? null : [] })} />
+          Všechny skupiny
+        </label>
+        ${!allGroups && groups?.map((g) => html`
+          <label key=${g.id} class="check-row">
+            <input type="checkbox" checked=${f.group_ids.includes(g.id)} onChange=${() => toggleGroup(g.id)} /> ${g.name}
+          </label>`)}
+        <span class="muted small">V Excelu bude list se všemi závadami a k tomu list pro každou skupinu.</span>
+      </fieldset>
       <label class="field">Jak často
         <select value=${f.frequency} onChange=${set('frequency')}>
           <option value="daily">Každý den</option>
@@ -179,6 +201,7 @@ function ScheduleForm({ initial, onDone }) {
 export function ExportsView() {
   const { api, me, toast, refresh } = useApp();
   const list = useLoad(() => (can.admin(me) ? api.listExportSchedules() : Promise.resolve([])), []);
+  const groups = useLoad(() => api.listGroups(), [], 'groups');
   const [editing, setEditing] = useState(null); // null = nic, {} = nový, objekt = úprava
   if (!can.admin(me)) return html`<${AdminOnly} title="Pravidelné exporty" />`;
 
@@ -203,7 +226,7 @@ export function ExportsView() {
           <li key=${s.id} class="list-row schedule-row ${s.active ? '' : 'inactive'}">
             <div class="trash-info">
               <b>${s.recipient}</b>
-              <span class="small">${describeSchedule(s)}</span>
+              <span class="small">${describeSchedule(s, groups.data)}</span>
               <span class="muted small">${s.last_sent_at ? `naposledy odesláno ${formatDateTime(s.last_sent_at)}` : 'zatím neodesláno'}${s.active ? '' : ' · pozastaveno'}</span>
               ${s.last_error && html`<span class="small error-text">Chyba: ${s.last_error}</span>`}
             </div>
@@ -215,7 +238,7 @@ export function ExportsView() {
           </li>`)}
       </ul>
       ${editing
-        ? html`<${ScheduleForm} key=${editing.id ?? 'new'} initial=${editing.id ? editing : null} onDone=${done} />`
+        ? html`<${ScheduleForm} key=${editing.id ?? 'new'} initial=${editing.id ? editing : null} groups=${groups.data} onDone=${done} />`
         : html`<button class="btn btn-primary block" onClick=${() => setEditing({})}><${Icon} name="plus" /> Přidat pravidelný export</button>`}
     </main>`;
 }
