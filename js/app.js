@@ -22,7 +22,10 @@ function readMe() {
 }
 function saveMe(p) {
   try {
-    if (p) localStorage.setItem(ME_KEY, JSON.stringify(p));
+    if (p) {
+      localStorage.setItem(ME_KEY, JSON.stringify(p));
+      localStorage.setItem('zavady-had-account', '1'); // příště rovnou přihlášení (account.js)
+    }
     else { localStorage.removeItem(ME_KEY); clearLocalCache(); }
   } catch { /* nevadí */ }
 }

@@ -20,19 +20,27 @@ function DemoLogin() {
     </div>`;
 }
 
+// Zda už se na tomto zařízení někdo přihlásil (nastavuje app.js) – pak se rovnou ukáže přihlášení
+const HAD_ACCOUNT = 'zavady-had-account';
+const hadAccount = () => { try { return !!localStorage.getItem(HAD_ACCOUNT); } catch { return false; } };
+
 function RealLogin() {
   const { api } = useApp();
-  const [tab, setTab] = useState('login');
+  // null = úvodní volba „Jsem tu poprvé“ / „Už mám účet“ (častá chyba: nový uživatel se zkouší přihlásit)
+  const [tab, setTab] = useState(() => (hadAccount() ? 'login' : null));
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [info, setInfo] = useState('');
+  const [hint, setHint] = useState(null); // 'register' | 'login' – nabídnout přepnutí po chybě
+
+  const switchTab = (t) => { setTab(t); setError(null); setInfo(''); setHint(null); };
 
   async function submit(e) {
     e.preventDefault();
-    setBusy(true); setError(null); setInfo('');
+    setBusy(true); setError(null); setInfo(''); setHint(null);
     try {
       if (tab === 'login') await api.signIn(email.trim(), password);
       if (tab === 'register') {
@@ -48,41 +56,76 @@ function RealLogin() {
       }
     } catch (err) {
       setError(err);
+      if (tab === 'login' && /Nesprávný e-mail nebo heslo/.test(err.message)) setHint('register');
+      if (tab === 'register' && /už existuje/.test(err.message)) setHint('login');
     } finally {
       setBusy(false);
     }
   }
 
+  if (!tab) {
+    return html`
+      <div class="card first-choice">
+        <button type="button" class="btn btn-primary block choice-btn" onClick=${() => switchTab('register')}>
+          <b>Jsem tu poprvé</b><span>vytvořit účet (registrace)</span></button>
+        <button type="button" class="btn block choice-btn" onClick=${() => switchTab('login')}>
+          <b>Už mám účet</b><span>přihlásit se</span></button>
+        <p class="muted small">Přihlásit se jde, až když máte účet. Poprvé se proto nejdřív zaregistrujte –
+          po schválení správcem uvidíte vozy a závady.</p>
+      </div>`;
+  }
+
   return html`
     <form class="card form" onSubmit=${submit}>
       <div class="tabs">
-        <button type="button" class=${tab === 'login' ? 'active' : ''} onClick=${() => setTab('login')}>Přihlásit</button>
-        <button type="button" class=${tab === 'register' ? 'active' : ''} onClick=${() => setTab('register')}>Registrovat</button>
+        <button type="button" class=${tab === 'register' ? 'active' : ''} onClick=${() => switchTab('register')}>
+          Registrovat<small>poprvé</small></button>
+        <button type="button" class=${tab === 'login' || tab === 'reset' ? 'active' : ''} onClick=${() => switchTab('login')}>
+          Přihlásit<small>už mám účet</small></button>
       </div>
       ${tab === 'register' && html`
+        <p class="muted small form-intro">Vytvořte si účet. Přijde vám e-mail pro potvrzení a pak účet schválí správce.</p>
         <label class="field">Jméno a příjmení
           <input autocomplete="name" value=${name} onInput=${(e) => setName(e.currentTarget.value)} required /></label>`}
       <label class="field">E-mail
         <input type="email" autocomplete="email" value=${email} onInput=${(e) => setEmail(e.currentTarget.value)} required /></label>
       ${tab !== 'reset' && html`
-        <label class="field">Heslo
+        <label class="field">Heslo${tab === 'register' ? ' (nové, aspoň 6 znaků)' : ''}
           <input type="password" autocomplete=${tab === 'login' ? 'current-password' : 'new-password'} minlength="6"
             value=${password} onInput=${(e) => setPassword(e.currentTarget.value)} required /></label>`}
       <${ErrorBox} error=${error} />
+      ${hint === 'register' && html`
+        <div class="first-time-hint">
+          <b>Jste tu poprvé?</b> Pak ještě nemáte účet – nejdřív se zaregistrujte.
+          <button type="button" class="btn btn-primary block" onClick=${() => switchTab('register')}>Zaregistrovat se</button>
+        </div>`}
+      ${hint === 'login' && html`
+        <div class="first-time-hint">
+          Účet už máte – stačí se přihlásit. Heslo jde v případě potřeby obnovit.
+          <button type="button" class="btn btn-primary block" onClick=${() => switchTab('login')}>Přihlásit se</button>
+        </div>`}
       ${info && html`<div class="ok-note">${info}</div>`}
       <button class="btn btn-primary block big-btn" disabled=${busy}>
         ${tab === 'login' ? 'Přihlásit se' : tab === 'register' ? 'Vytvořit účet' : 'Poslat odkaz'}
       </button>
-      ${tab === 'login' && html`<button type="button" class="link-btn" onClick=${() => setTab('reset')}>Zapomenuté heslo</button>`}
-      ${tab === 'reset' && html`<button type="button" class="link-btn" onClick=${() => setTab('login')}>Zpět na přihlášení</button>`}
+      ${tab === 'login' && html`<button type="button" class="link-btn" onClick=${() => switchTab('reset')}>Zapomenuté heslo</button>`}
+      ${tab === 'reset' && html`<button type="button" class="link-btn" onClick=${() => switchTab('login')}>Zpět na přihlášení</button>`}
     </form>`;
 }
 
 export function LoginView() {
   const { api } = useApp();
+  // Odkaz na vůz nebo závadu (např. ze zprávy ve WhatsAppu) otevřel někdo nepřihlášený
+  const deepLink = /^#\/(vuz|zavada)\//.test(location.hash);
+  const standalone = navigator.standalone || matchMedia('(display-mode: standalone)').matches;
   return html`
     <main class="page narrow login">
       <div class="logo"><img src="icons/icon.svg" alt="" width="72" height="72" /><h1>Závady vozů</h1></div>
+      ${deepLink && api.mode !== 'demo' && html`
+        <div class="card link-note">
+          <b>Odkaz vede na závadu v aplikaci Závady vozů.</b> Zobrazí se po přihlášení.
+          ${!standalone && html`<div class="small">Máte aplikaci na ploše? Otevřete ji z ikony – tam už jste přihlášení.</div>`}
+        </div>`}
       ${api.mode === 'demo' ? html`<${DemoLogin} />` : html`<${RealLogin} />`}
       <a class="install-link" href="navod.html">Jak nainstalovat aplikaci do telefonu?</a>
     </main>`;
@@ -216,7 +259,21 @@ export function AccountView() {
         </section>`}
 
       <button class="btn block" onClick=${() => api.signOut().then(() => { location.hash = ''; })}><${Icon} name="logout" /> Odhlásit</button>
+      <${AppVersion} />
     </main>`;
+}
+
+// Verze aplikace = verze, kterou má telefon opravdu načtenou (zeptá se service workeru, sw.js → CACHE)
+function AppVersion() {
+  const [v, setV] = useState('');
+  useEffect(() => {
+    const sw = navigator.serviceWorker?.controller;
+    if (!sw) return;
+    const ch = new MessageChannel();
+    ch.port1.onmessage = (e) => setV(String(e.data ?? '').replace(/^zavady-v/, ''));
+    sw.postMessage({ type: 'version' }, [ch.port2]);
+  }, []);
+  return v ? html`<p class="muted small app-version">Verze aplikace ${v}</p>` : null;
 }
 
 export function UsersView() {

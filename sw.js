@@ -1,6 +1,6 @@
 // Service worker: rychlé spuštění z paměti telefonu, offline záloha a push upozornění na nové závady.
 
-const CACHE = 'zavady-v15';
+const CACHE = 'zavady-v16';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/config.js', 'js/model.js', 'js/codes.js', 'js/ui.js', 'js/api/index.js', 'js/api/demo.js', 'js/api/supabase.js',
@@ -15,6 +15,11 @@ self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE)
     .then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' }))))
     .then(() => self.skipWaiting()));
+});
+
+// Aplikace se ptá na číslo verze (Můj účet → „Verze aplikace“)
+self.addEventListener('message', (e) => {
+  if (e.data?.type === 'version') e.ports[0]?.postMessage(CACHE);
 });
 
 // Po aktivaci smazat starou verzi a otevřeným oknům říct, že je k dispozici nová
