@@ -41,7 +41,7 @@ let state = load();
 function load() {
   try {
     const s = JSON.parse(localStorage.getItem(KEY));
-    if (s?.version === 2) return s;
+    if (s?.version === 2) return { audit: [], schedules: [], ...s };
   } catch { /* poškozená data → nová ukázka */ }
   const s = seed();
   persist(s);
@@ -111,6 +111,29 @@ const findDefect = (id) => {
   return d;
 };
 
+// Historie změn a koš – napodobuje databázovou tabulku audit_log
+let txSeq = Date.now();
+const newTx = () => ++txSeq;
+function audit(tx, tbl, action, oldRow, newRow) {
+  const r = newRow ?? oldRow;
+  const defectId = tbl === 'defects' ? r.id : ['comments', 'attachments'].includes(tbl) ? r.defect_id : null;
+  const wagonId = tbl === 'wagons' ? r.id : tbl === 'defects' ? r.wagon_id
+    : state.defects.find((d) => d.id === defectId)?.wagon_id ?? null;
+  const m = me();
+  state.audit.push({
+    id: (state.audit.at(-1)?.id ?? 0) + 1, tx, at: new Date().toISOString(), actor: m?.id ?? null,
+    actor_name: m?.full_name ?? null, tbl, row_id: r.id, action,
+    old_row: oldRow ? { ...oldRow } : null, new_row: newRow ? { ...newRow } : null,
+    wagon_id: wagonId, defect_id: defectId, restored_at: null,
+  });
+}
+const STATE_KEY = { wagons: 'wagons', defects: 'defects', attachments: 'attachments', comments: 'comments' };
+function removeRows(tx, tbl, rows) {
+  for (const r of rows) audit(tx, tbl, 'delete', r, null);
+  const ids = new Set(rows.map((r) => r.id));
+  state[STATE_KEY[tbl]] = state[STATE_KEY[tbl]].filter((r) => !ids.has(r.id));
+}
+
 function wagonOverview(w) {
   const ds = state.defects.filter((d) => d.wagon_id === w.id);
   const open = ds.filter((d) => !d.resolved_at);
@@ -137,28 +160,21 @@ async function defectFeed(d) {
   };
 }
 
-async function storeFiles(defectId, files, onProgress) {
+async function storeFiles(defectId, files, onProgress, tx = newTx()) {
   let i = 0;
   for (const file of files) {
     onProgress?.(++i, files.length);
     const blob = await compressImage(file);
     const id = uid();
     await idb('readwrite', (s) => s.put(blob, id));
-    state.attachments.push({
+    const att = {
       id, defect_id: defectId, path: id,
       kind: file.type.startsWith('video/') ? 'video' : 'image',
       created_by: me().id, created_at: new Date().toISOString(),
-    });
+    };
+    state.attachments.push(att);
+    audit(tx, 'attachments', 'insert', null, att);
   }
-}
-
-async function removeFiles(attachmentIds) {
-  for (const id of attachmentIds) {
-    await idb('readwrite', (s) => s.delete(id)).catch(() => {});
-    URL.revokeObjectURL(urlCache.get(id) ?? '');
-    urlCache.delete(id);
-  }
-  state.attachments = state.attachments.filter((a) => !attachmentIds.includes(a.id));
 }
 
 // ───── Rozhraní ─────
@@ -225,21 +241,28 @@ export const api = {
     if (state.wagons.some((w) => w.number === number)) throw new Error('Vůz s tímto číslem už existuje.');
     const w = { id: uid(), number, group_id: groupId, note: null, created_by: m.id, created_at: new Date().toISOString() };
     state.wagons.push(w);
+    audit(newTx(), 'wagons', 'insert', null, w);
     commit();
     return wagonOverview(w);
   },
   async updateWagon(id, patch) {
     if (!can.admin(me())) throw new Error('Vůz může upravit jen správce.');
-    Object.assign(state.wagons.find((w) => w.id === id), patch);
+    const w = state.wagons.find((x) => x.id === id);
+    const old = { ...w };
+    Object.assign(w, patch);
+    audit(newTx(), 'wagons', 'update', old, w);
     commit();
   },
   async deleteWagon(id) {
     if (!can.admin(me())) throw new Error('Vůz může smazat jen správce.');
-    const defectIds = state.defects.filter((d) => d.wagon_id === id).map((d) => d.id);
-    await removeFiles(state.attachments.filter((a) => defectIds.includes(a.defect_id)).map((a) => a.id));
-    state.comments = state.comments.filter((c) => !defectIds.includes(c.defect_id));
-    state.defects = state.defects.filter((d) => d.wagon_id !== id);
-    state.wagons = state.wagons.filter((w) => w.id !== id);
+    // smazané jde do koše (historie), fotky zůstávají, aby šlo vše obnovit
+    const tx = newTx();
+    const defects = state.defects.filter((d) => d.wagon_id === id);
+    const ids = new Set(defects.map((d) => d.id));
+    removeRows(tx, 'attachments', state.attachments.filter((a) => ids.has(a.defect_id)));
+    removeRows(tx, 'comments', state.comments.filter((c) => ids.has(c.defect_id)));
+    removeRows(tx, 'defects', defects);
+    removeRows(tx, 'wagons', state.wagons.filter((w) => w.id === id));
     commit();
   },
 
@@ -264,39 +287,52 @@ export const api = {
       resolved_at: null, resolved_by: null, resolution_note: null,
     };
     state.defects.push(d);
-    await storeFiles(d.id, files, onProgress);
+    const tx = newTx();
+    audit(tx, 'defects', 'insert', null, d);
+    await storeFiles(d.id, files, onProgress, tx);
     commit({ newDefect: d, own: true });
     return d;
   },
   async updateDefect(id, { description, found_at, defect_code }, newFiles = [], removeIds = [], onProgress) {
     const d = findDefect(id);
     if (!can.edit(me(), d)) throw new Error('Závadu může upravit jen ten, kdo ji vložil, nebo správce.');
+    if (!can.editDefect(me(), d)) throw new Error('Opravená závada je zamčená. Upravit ji může jen správce, nebo ji nejdřív vraťte mezi neopravené.');
     const problem = found_at && checkFoundAt(found_at, d.resolved_at);
     if (problem) throw new Error(problem);
+    const tx = newTx();
+    const old = { ...d };
     Object.assign(d, { description: description.trim(), defect_code: defect_code || null, updated_at: new Date().toISOString() });
     if (found_at) d.found_at = found_at;
-    await removeFiles(removeIds);
-    await storeFiles(id, newFiles, onProgress);
+    audit(tx, 'defects', 'update', old, d);
+    removeRows(tx, 'attachments', state.attachments.filter((a) => removeIds.includes(a.id)));
+    await storeFiles(id, newFiles, onProgress, tx);
     commit();
   },
   async deleteDefect(id) {
     const d = findDefect(id);
-    if (!can.edit(me(), d)) throw new Error('Závadu může smazat jen ten, kdo ji vložil, nebo správce.');
-    await removeFiles(state.attachments.filter((a) => a.defect_id === id).map((a) => a.id));
-    state.comments = state.comments.filter((c) => c.defect_id !== id);
-    state.defects = state.defects.filter((x) => x.id !== id);
+    if (!can.editDefect(me(), d)) {
+      throw new Error(d.resolved_at ? 'Opravenou závadu může smazat jen správce.' : 'Závadu může smazat jen ten, kdo ji vložil, nebo správce.');
+    }
+    const tx = newTx();
+    removeRows(tx, 'attachments', state.attachments.filter((a) => a.defect_id === id));
+    removeRows(tx, 'comments', state.comments.filter((c) => c.defect_id === id));
+    removeRows(tx, 'defects', [d]);
     commit();
   },
   async resolveDefect(id, note) {
-    if (!can.resolve(me(), findDefect(id))) throw new Error('Závadu může označit jako opravenou jen její autor, opravář nebo správce.');
-    Object.assign(findDefect(id), {
-      resolved_at: new Date().toISOString(), resolved_by: me().id, resolution_note: note?.trim() || null,
-    });
+    const d = findDefect(id);
+    if (!can.resolve(me(), d)) throw new Error('Závadu může označit jako opravenou jen její autor, opravář nebo správce.');
+    const old = { ...d };
+    Object.assign(d, { resolved_at: new Date().toISOString(), resolved_by: me().id, resolution_note: note?.trim() || null });
+    audit(newTx(), 'defects', 'update', old, d);
     commit();
   },
   async reopenDefect(id) {
-    if (!can.resolve(me(), findDefect(id))) throw new Error('Závadu může vrátit jen její autor, opravář nebo správce.');
-    Object.assign(findDefect(id), { resolved_at: null, resolved_by: null, resolution_note: null });
+    const d = findDefect(id);
+    if (!can.resolve(me(), d)) throw new Error('Závadu může vrátit jen její autor, opravář nebo správce.');
+    const old = { ...d };
+    Object.assign(d, { resolved_at: null, resolved_by: null, resolution_note: null });
+    audit(newTx(), 'defects', 'update', old, d);
     commit();
   },
 
@@ -308,6 +344,76 @@ export const api = {
   async addRegulation() { throw new Error('V ukázkovém režimu nelze nahrávat předpisy.'); },
   async deleteRegulation() { throw new Error('V ukázkovém režimu nelze mazat předpisy.'); },
 
+  // Přehled závad napříč vozy
+  async listOverview(status = 'open') {
+    requireMember();
+    const rows = state.defects
+      .filter((d) => (status === 'open' ? !d.resolved_at : status === 'resolved' ? !!d.resolved_at : true))
+      .map((d) => {
+        const w = state.wagons.find((x) => x.id === d.wagon_id);
+        return {
+          ...d, created_by_name: nameOf(d.created_by), resolved_by_name: d.resolved_by ? nameOf(d.resolved_by) : null,
+          comment_count: state.comments.filter((c) => c.defect_id === d.id).length,
+          attachment_count: state.attachments.filter((a) => a.defect_id === d.id).length,
+          number: w?.number ?? '', group_id: w?.group_id, group_name: groupName(w?.group_id),
+        };
+      });
+    return rows.sort((a, b) => (b.found_at ?? b.created_at).localeCompare(a.found_at ?? a.created_at));
+  },
+
+  // Historie změn a koš
+  async listHistory(defectId) {
+    requireMember();
+    return state.audit.filter((a) => a.defect_id === defectId);
+  },
+  async listAudit(limit = 300) {
+    requireMember();
+    return state.audit.slice(-limit).reverse();
+  },
+  async listTrash() {
+    requireMember();
+    return state.audit.filter((a) => a.action === 'delete' && !a.restored_at).reverse();
+  },
+  async restoreDeleted(tx) {
+    if (!can.admin(me())) throw new Error('Obnovit smazané záznamy může jen správce.');
+    const order = { wagons: 1, defects: 2 };
+    const items = state.audit.filter((a) => a.tx === tx && a.action === 'delete' && !a.restored_at)
+      .sort((a, b) => (order[a.tbl] ?? 4) - (order[b.tbl] ?? 4) || a.id - b.id);
+    const rtx = newTx();
+    for (const a of items) {
+      const list = state[STATE_KEY[a.tbl]];
+      const parentMissing = (a.tbl === 'defects' && !state.wagons.some((w) => w.id === a.old_row.wagon_id))
+        || (['comments', 'attachments'].includes(a.tbl) && !state.defects.some((d) => d.id === a.old_row.defect_id));
+      if (parentMissing) throw new Error('Nelze obnovit: nadřazený záznam (vůz nebo závada) je také smazaný. Obnovte nejdřív ten.');
+      if (!list.some((r) => r.id === a.row_id)) list.push({ ...a.old_row });
+      a.restored_at = new Date().toISOString();
+      audit(rtx, a.tbl, 'restore', null, a.old_row);
+    }
+    commit();
+    return items.length;
+  },
+  async listWagonNumbers() {
+    return new Map([...state.wagons, ...state.audit.filter((a) => a.tbl === 'wagons' && a.old_row).map((a) => a.old_row)]
+      .map((w) => [w.id, w.number]));
+  },
+
+  // Pravidelné exporty (v ukázce se jen ukládají, nerozesílají)
+  async listExportSchedules() {
+    if (!can.admin(me())) throw new Error('Jen pro správce.');
+    return state.schedules;
+  },
+  async saveExportSchedule({ id, ...fields }) {
+    if (!can.admin(me())) throw new Error('Jen pro správce.');
+    if (id) Object.assign(state.schedules.find((x) => x.id === id), fields);
+    else state.schedules.push({ id: uid(), created_at: new Date().toISOString(), last_sent_at: null, active: true, ...fields });
+    commit();
+  },
+  async deleteExportSchedule(id) {
+    if (!can.admin(me())) throw new Error('Jen pro správce.');
+    state.schedules = state.schedules.filter((x) => x.id !== id);
+    commit();
+  },
+
   // Komentáře
   async listComments(defectId) {
     requireMember();
@@ -318,13 +424,15 @@ export const api = {
   async addComment(defectId, body) {
     const m = requireMember();
     findDefect(defectId);
-    state.comments.push({ id: uid(), defect_id: defectId, author_id: m.id, body: body.trim(), created_at: new Date().toISOString() });
+    const c = { id: uid(), defect_id: defectId, author_id: m.id, body: body.trim(), created_at: new Date().toISOString() };
+    state.comments.push(c);
+    audit(newTx(), 'comments', 'insert', null, c);
     commit({ comment: defectId });
   },
   async deleteComment(id) {
     const c = state.comments.find((x) => x.id === id);
     if (!can.deleteComment(me(), c)) throw new Error('Komentář může smazat jen autor nebo správce.');
-    state.comments = state.comments.filter((x) => x.id !== id);
+    removeRows(newTx(), 'comments', [c]);
     commit({ comment: c.defect_id });
   },
 
@@ -349,7 +457,10 @@ export const api = {
     const m = me();
     if (!can.admin(m)) throw new Error('Roli může změnit jen správce.');
     if (id === m.id && role !== 'admin') throw new Error('Správce si nemůže odebrat vlastní roli.');
-    state.profiles.find((p) => p.id === id).role = role;
+    const p = state.profiles.find((x) => x.id === id);
+    const old = { ...p };
+    p.role = role;
+    audit(newTx(), 'profiles', 'update', old, p);
     commit();
   },
   async updateMyName(full_name) {
@@ -461,5 +572,5 @@ function seed() {
       }
     }
   }
-  return { version: 2, profiles, wagons, defects, attachments: [], comments };
+  return { version: 2, profiles, wagons, defects, attachments: [], comments, audit: [], schedules: [] };
 }

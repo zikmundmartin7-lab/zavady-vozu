@@ -8,6 +8,7 @@ import {
 } from '../model.js';
 import { Empty, ErrorBox, Icon, Loading, TopBar, WagonNumber, replace, useApp, useLoad } from '../ui.js';
 import { CodePicker } from './codes.js';
+import { outbox } from '../outbox.js';
 
 function FilePicker({ onFiles }) {
   const pick = (e) => {
@@ -40,10 +41,10 @@ export function DefectFormView({ editId, params }) {
   const existingDefect = useLoad(() => (editId ? api.getDefect(editId) : Promise.resolve(null)), [editId]);
   const fixedWagonId = editId ? existingDefect.data?.wagon_id : presetWagonId;
   const fixedWagon = useLoad(() => (fixedWagonId ? api.getWagon(fixedWagonId) : Promise.resolve(null)), [fixedWagonId]);
-  const groups = useLoad(() => api.listGroups(), []);
+  const groups = useLoad(() => api.listGroups(), [], 'groups');
 
   const [number, setNumber] = useState(digitsOnly(params.get('cislo') ?? ''));
-  const [found, setFound] = useState(undefined); // undefined = nehledáno, null = nový vůz
+  const [found, setFound] = useState(undefined); // undefined = nehledáno, null = nový vůz, 'offline' = nelze ověřit
   const [groupId, setGroupId] = useState(Number(params.get('skupina')) || null);
   const [code, setCode] = useState('');
   const [description, setDescription] = useState('');
@@ -69,7 +70,10 @@ export function DefectFormView({ editId, params }) {
   useEffect(() => {
     if (fixedWagonId || !isCompleteNumber(number)) { setFound(undefined); return; }
     let alive = true;
-    api.findWagon(number).then((w) => alive && setFound(w), (e) => alive && setError(e));
+    api.findWagon(number).then(
+      (w) => alive && setFound(w),
+      (e) => alive && (e.network || !navigator.onLine ? setFound('offline') : setError(e)),
+    );
     return () => { alive = false; };
   }, [number, fixedWagonId]);
 
@@ -95,21 +99,22 @@ export function DefectFormView({ editId, params }) {
   async function submit(e) {
     e.preventDefault();
     setError(null);
+    let wagon = fixedWagon.data;
+    let found_at;
     try {
-      let wagon = fixedWagon.data;
       if (!fixedWagonId) {
         if (!isCompleteNumber(number)) throw new Error('Zadejte celé číslo vozu (12 číslic).');
         if (!isValidCheckDigit(number)
           && !confirm(`Kontrolní číslice nesedí – pro toto číslo by měla být ${checkDigit(number)}. Přesto pokračovat?`)) return;
         if (found === undefined) throw new Error('Ověřuji číslo vozu, zkuste to za okamžik znovu.');
-        if (!found && !groupId) throw new Error('Vyberte skupinu, do které nový vůz patří.');
+        if ((!found || found === 'offline') && !groupId) throw new Error('Vyberte skupinu, do které nový vůz patří.');
       }
       if (code && !CODE_RE.test(code)) throw new Error('Kód závady má tvar např. 1.2 nebo 1.2.2.1 (až 4 úrovně).');
       if (!description.trim()) throw new Error('Popište závadu.');
       const foundProblem = checkFoundAt(foundAt, editId ? existingDefect.data.resolved_at : null);
       if (foundProblem) throw new Error(foundProblem);
       // Při úpravě se datum posílá, jen když ho někdo změnil (jinak by se ztratily sekundy a závada by byla „upravená“).
-      const found_at = editId && foundAt === initialFoundAt ? undefined : new Date(foundAt).toISOString();
+      found_at = editId && foundAt === initialFoundAt ? undefined : new Date(foundAt).toISOString();
 
       if (editId) {
         setBusy('Ukládám…');
@@ -120,12 +125,22 @@ export function DefectFormView({ editId, params }) {
         return;
       }
       setBusy('Ukládám…');
-      if (!wagon) wagon = found ?? await api.createWagon(number, groupId);
+      if (!wagon) wagon = found && found !== 'offline' ? found : (await api.findWagon(number)) ?? await api.createWagon(number, groupId);
       await api.createDefect({ wagon_id: wagon.id, description, found_at, defect_code: code }, files,
         (i, n) => setBusy(`Nahrávám přílohu ${i}/${n}…`));
       toast('Závada uložena. Ostatní uživatelé dostanou upozornění.');
       replace(`#/vuz/${wagon.id}`);
     } catch (err) {
+      // Bez signálu: novou závadu uložit v telefonu a odeslat později (úpravy jen s připojením)
+      if (!editId && (err.network || !navigator.onLine) && description.trim()) {
+        await outbox.add({
+          wagon_id: wagon?.id ?? null, number, group_id: groupId, description: description.trim(),
+          defect_code: code || null, found_at: found_at ?? new Date().toISOString(), files,
+        });
+        toast('Bez signálu – závada je uložená v telefonu a odešle se sama, jakmile bude připojení.', { sticky: true });
+        replace(fixedWagonId ? `#/vuz/${fixedWagonId}` : '#/');
+        return;
+      }
       setError(err);
       setBusy('');
     }
@@ -134,9 +149,12 @@ export function DefectFormView({ editId, params }) {
   if (editId && existingDefect.data === null) {
     return html`<${TopBar} back="#/" title="Upravit závadu" /><main class="page"><${Empty}>Závada nebyla nalezena.<//></main>`;
   }
-  if (editId && existingDefect.data && !can.edit(me, existingDefect.data)) {
+  if (editId && existingDefect.data && !can.editDefect(me, existingDefect.data)) {
+    const msg = can.edit(me, existingDefect.data)
+      ? 'Opravená závada je zamčená. Upravit ji může jen správce, nebo ji nejdřív vraťte mezi neopravené.'
+      : 'Závadu může upravit jen ten, kdo ji vložil, nebo správce.';
     return html`<${TopBar} back="#/vuz/${existingDefect.data.wagon_id}" title="Upravit závadu" />
-      <main class="page"><${ErrorBox} error=${new Error('Závadu může upravit jen ten, kdo ji vložil, nebo správce.')} /></main>`;
+      <main class="page"><${ErrorBox} error=${new Error(msg)} /></main>`;
   }
   if ((editId && !existingDefect.data) || (fixedWagonId && !fixedWagon.data)) {
     return html`<${TopBar} back="#/" title="Závada" /><main class="page"><${Loading} /></main>`;
@@ -161,10 +179,13 @@ export function DefectFormView({ editId, params }) {
               <div class="hint">${number.length}/12 číslic</div>
               ${complete && !isValidCheckDigit(number) && html`
                 <div class="warn"><${Icon} name="alert" size=${16} /> Kontrolní číslice nesedí – pro toto číslo by měla být ${checkDigit(number)}.</div>`}
-              ${complete && found && html`
+              ${complete && found && found !== 'offline' && html`
                 <div class="ok-note"><${Icon} name="check" size=${16} /> Vůz už je v evidenci – skupina <b>${found.group_name}</b>.</div>`}
-              ${complete && found === null && html`
-                <div class="hint">Nový vůz – vyberte skupinu:</div>
+              ${complete && found === 'offline' && html`
+                <div class="warn"><${Icon} name="cloud" size=${16} /> Bez signálu nelze ověřit, jestli vůz už je v evidenci.
+                  Vyberte skupinu pro případ, že je nový. Závada se uloží v telefonu a odešle později.</div>`}
+              ${complete && (found === null || found === 'offline') && html`
+                ${found === null && html`<div class="hint">Nový vůz – vyberte skupinu:</div>`}
                 <div class="chips-select">
                   ${groups.data?.map((g) => html`
                     <button type="button" class="chip-btn ${groupId === g.id ? 'active' : ''}" onClick=${() => setGroupId(g.id)}>${g.name}</button>`)}

@@ -201,7 +201,13 @@ export function AccountView() {
         </section>`}
 
       ${can.admin(me) && html`
-        <a class="card list-row" href="#/uzivatele"><${Icon} name="users" /> Správa uživatelů <span class="spacer"></span><${Icon} name="right" size=${18} /></a>`}
+        <h2 class="section-title">Správa</h2>
+        <ul class="list admin-links">
+          <li><a class="list-row" href="#/uzivatele"><${Icon} name="users" /> Správa uživatelů <span class="spacer"></span><${Icon} name="right" size=${18} /></a></li>
+          <li><a class="list-row" href="#/historie"><${Icon} name="history" /> Historie změn <span class="spacer"></span><${Icon} name="right" size=${18} /></a></li>
+          <li><a class="list-row" href="#/kos"><${Icon} name="trash" /> Koš (smazané záznamy) <span class="spacer"></span><${Icon} name="right" size=${18} /></a></li>
+          <li><a class="list-row" href="#/exporty"><${Icon} name="download" /> Pravidelné exporty na e-mail <span class="spacer"></span><${Icon} name="right" size=${18} /></a></li>
+        </ul>`}
 
       ${api.mode === 'demo' && html`
         <section class="card">

@@ -2,7 +2,36 @@
 
 import { html, useEffect, useRef, useState } from '../../vendor/preact-htm.js';
 import { can, formatDay, formatNumber, formatTime } from '../model.js';
+import { actorName, describe } from '../history.js';
+import { formatDateTime } from '../model.js';
 import { DefectCard, Empty, ErrorBox, Icon, Loading, TopBar, useApp, useLoad } from '../ui.js';
+
+// Historie změn závady (kdo, kdy, co) – rozbalí se tlačítkem
+function DefectHistory({ id }) {
+  const { api } = useApp();
+  const [open, setOpen] = useState(false);
+  const data = useLoad(() => api.listHistory(id), [id]);
+  const entries = data.data ?? [];
+  return html`
+    <button class="btn btn-ghost block toggle" onClick=${() => setOpen(!open)} aria-expanded=${open}>
+      <${Icon} name="history" /> Historie změn${data.data ? ` (${entries.length})` : ''}
+      <${Icon} name="down" class=${open ? 'flip' : ''} />
+    </button>
+    ${open && html`
+      <${ErrorBox} error=${data.error} />
+      ${data.data && !entries.length && html`<${Empty}>Zatím bez záznamů (historie se zapisuje od jejího zapnutí).<//>`}
+      <ul class="history-list">
+        ${entries.map((e) => {
+          const d = describe(e);
+          return html`
+            <li key=${e.id} class="history-item">
+              <span class="muted small">${formatDateTime(e.at)}</span>
+              <div><b>${actorName(e)}</b> ${d.title}</div>
+              ${d.lines.map((l) => html`<div class="small history-line">${l}</div>`)}
+            </li>`;
+        })}
+      </ul>`}`;
+}
 
 export function DefectView({ id }) {
   const { api, me, version, toast } = useApp();
@@ -61,6 +90,7 @@ export function DefectView({ id }) {
     <${TopBar} back=${back} title=${wagon.data ? formatNumber(wagon.data.number) : 'Závada'} sub=${wagon.data?.group_name} />
     <main class="page chat-page">
       <${DefectCard} d=${d} showComments=${false} />
+      <${DefectHistory} id=${id} />
       <h2 class="section-title">Komentáře</h2>
       <div class="chat">
         ${comments === null && html`<${Loading} />`}

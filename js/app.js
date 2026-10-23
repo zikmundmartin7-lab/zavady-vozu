@@ -6,7 +6,10 @@ import { can, formatNumber } from './model.js';
 import { AppCtx, Lightbox, Loading, Toasts, clearLocalCache } from './ui.js';
 import { AccountView, LoginView, PendingView, RecoveryView, UsersView } from './views/account.js';
 import { DefectView } from './views/defect.js';
+import { syncOutbox } from './outbox.js';
+import { AuditView, ExportsView, TrashView } from './views/admin.js';
 import { CodesView } from './views/codes.js';
+import { OverviewView } from './views/overview.js';
 import { DefectFormView } from './views/form.js';
 import { RegulationsView } from './views/regulations.js';
 import { GroupView, HomeView } from './views/groups.js';
@@ -48,6 +51,10 @@ function Page({ route }) {
     case 'nova': return html`<${DefectFormView} params=${route.params} />`;
     case 'upravit': return html`<${DefectFormView} editId=${route.id} params=${route.params} />`;
     case 'kody': return html`<${CodesView} params=${route.params} />`;
+    case 'prehled': return html`<${OverviewView} />`;
+    case 'kos': return html`<${TrashView} />`;
+    case 'historie': return html`<${AuditView} />`;
+    case 'exporty': return html`<${ExportsView} />`;
     case 'predpisy': return html`<${RegulationsView} />`;
     case 'ucet': return html`<${AccountView} />`;
     case 'uzivatele': return html`<${UsersView} />`;
@@ -99,6 +106,18 @@ function App() {
     if (!can.admin(me)) { setPendingUsers(0); return; }
     api.listProfiles().then((p) => setPendingUsers(p.filter((u) => u.role === 'pending').length), () => {});
   }, [me?.id, me?.role, version]);
+
+  // Zápis bez signálu: čekající závady odeslat po spuštění, po návratu signálu a pak každou minutu
+  useEffect(() => {
+    if (!can.use(me)) return undefined;
+    const send = () => navigator.onLine && syncOutbox(api).then((n) => {
+      if (n) { toast(`Odesláno ze zápisu bez signálu: ${n}.`); setVersion((v) => v + 1); }
+    }, () => {});
+    send();
+    addEventListener('online', send);
+    const timer = setInterval(send, 60000);
+    return () => { removeEventListener('online', send); clearInterval(timer); };
+  }, [me?.id, me?.role]);
 
   // Nová verze aplikace (service worker ji stáhl na pozadí) → nabídnout načtení
   useEffect(() => {

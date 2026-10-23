@@ -3,6 +3,7 @@
 import { html, createContext, useContext, useEffect, useRef, useState } from '../vendor/preact-htm.js';
 import { can, digitsOnly, foundAtOf, formatDateTime, plural, splitNumber } from './model.js';
 import { matchRanges } from './codes.js';
+import { outbox, syncOutbox } from './outbox.js';
 
 export const AppCtx = createContext(null);
 export const useApp = () => useContext(AppCtx);
@@ -83,6 +84,10 @@ const ICONS = {
   book: 'M4 4.5A2.5 2.5 0 0 1 6.5 2H20v18H6.5A2.5 2.5 0 0 0 4 22.5zM4 4.5v18M8 7h8M8 11h6',
   upload: 'M12 16V4M7 9l5-5 5 5M4 16v4h16v-4',
   file: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h5',
+  download: 'M12 4v12M7 11l5 5 5-5M4 20h16',
+  clipboard: 'M9 3h6v3H9zM7 4.5H5V21h14V4.5h-2M8.5 12.5l2 2 4.5-4.5M8.5 17.5h7',
+  lock: 'M6 11h12v10H6zM8.5 11V7.5a3.5 3.5 0 0 1 7 0V11',
+  cloud: 'M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 9.5a4 4 0 0 1-.5 7.97zM12 11v6M9.5 14.5 12 17l2.5-2.5',
 };
 export const Icon = ({ name, size = 20, class: cls = '' }) => html`
   <svg class="icon ${cls}" width=${size} height=${size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -157,6 +162,7 @@ export function BottomNav({ active }) {
   return html`
     <nav class="bottom-nav" aria-label="Hlavní nabídka">
       ${tab('vozy', '#/', 'wagon', 'Vozy')}
+      ${tab('prehled', '#/prehled', 'clipboard', 'Přehled')}
       ${tab('kody', '#/kody', 'codes', 'Kódy závad')}
       ${tab('predpisy', '#/predpisy', 'book', 'Předpisy')}
     </nav>`;
@@ -313,6 +319,7 @@ export function DefectCard({ d, showComments = true }) {
           ? html`<span class="chip chip-ok"><${Icon} name="check" size=${14} /> Opraveno</span>`
           : html`<span class="chip chip-open">Neopravená</span>`}
         ${d.defect_code && html`<span class="chip chip-code" title="Kód závady dle přílohy 9 VSP">kód ${d.defect_code}</span>`}
+        ${resolved && html`<span class="chip chip-lock" title="Opravená závada je zamčená – upravit ji může jen správce"><${Icon} name="lock" size=${13} /> zamčeno</span>`}
         <span class="spacer"></span>
         <span class="muted small" title="Datum a čas zjištění">zjištěno ${formatDateTime(foundAt)}</span>
       </div>
@@ -359,7 +366,7 @@ export function DefectCard({ d, showComments = true }) {
         <span class="spacer"></span>
         ${resolved && can.resolve(me, d) && html`
           <button class="btn btn-ghost" disabled=${busy} onClick=${reopen} title="Vrátit mezi neopravené"><${Icon} name="undo" size=${18} /></button>`}
-        ${can.edit(me, d) && html`
+        ${can.editDefect(me, d) && html`
           <a class="btn btn-ghost" href="#/upravit/${d.id}" title="Upravit"><${Icon} name="edit" size=${18} /></a>
           <button class="btn btn-ghost danger" disabled=${busy} onClick=${remove} title="Smazat"><${Icon} name="trash" size=${18} /></button>`}
       </div>
@@ -406,4 +413,54 @@ export function Toasts({ items, dismiss }) {
           <div>${t.message}</div>
         </div>`)}
     </div>`;
+}
+
+// ───── Zápis bez signálu: banner s frontou závad čekajících na odeslání ─────
+
+export function useOutbox() {
+  const [items, setItems] = useState([]);
+  useEffect(() => {
+    const load = () => outbox.list().then(setItems, () => setItems([]));
+    load();
+    return outbox.subscribe(load);
+  }, []);
+  return items;
+}
+
+export function OutboxBanner() {
+  const { api, toast, refresh } = useApp();
+  const items = useOutbox();
+  const [busy, setBusy] = useState(false);
+  if (!items.length) return null;
+  const failed = items.filter((i) => i.error);
+
+  async function sendNow() {
+    setBusy(true);
+    try {
+      const n = await syncOutbox(api);
+      if (n) { toast(`Odesláno: ${plural(n, 'závada', 'závady', 'závad')}.`); refresh(); }
+      else if (!navigator.onLine) toast('Pořád bez připojení – odešle se samo, až bude signál.');
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function discard(item) {
+    if (confirm(`Zahodit neodeslanou závadu „${item.description.slice(0, 60)}“?`)) await outbox.remove(item.id);
+  }
+
+  return html`
+    <section class="outbox">
+      <div class="outbox-head">
+        <${Icon} name="cloud" />
+        <b>Čeká na odeslání: ${plural(items.length, 'závada', 'závady', 'závad')}</b>
+        <span class="spacer"></span>
+        <button class="btn btn-primary" disabled=${busy} onClick=${sendNow}>${busy ? 'Odesílám…' : 'Odeslat teď'}</button>
+      </div>
+      <div class="small">Zapsáno bez signálu. Odešle se samo, jakmile bude připojení.</div>
+      ${failed.map((i) => html`
+        <div key=${i.id} class="outbox-error small">
+          <b>Nepodařilo se odeslat:</b> ${i.description.slice(0, 80)} – ${i.error}
+          <button class="link-btn" onClick=${() => discard(i)}>Zahodit</button>
+        </div>`)}
+    </section>`;
 }

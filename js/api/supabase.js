@@ -33,13 +33,16 @@ const MESSAGES = [
   [/password should be at least/i, 'Heslo musí mít alespoň 6 znaků.'],
   [/wagons_number_key/i, 'Vůz s tímto číslem už existuje.'],
   [/rate limit/i, 'Příliš mnoho pokusů, zkuste to za chvíli.'],
-  [/failed to fetch|network/i, 'Chyba připojení k internetu.'],
+  [/failed to fetch|load failed|network/i, 'Chyba připojení k internetu.'],
   [/row-level security/i, 'Nemáte oprávnění.'],
 ];
 function fail(error) {
   const msg = error?.message ?? String(error);
   const hit = MESSAGES.find(([re]) => re.test(msg));
-  throw new Error(hit ? hit[1] : msg);
+  const err = new Error(hit ? hit[1] : msg);
+  // výpadek sítě → aplikace může závadu uložit do fronty a odeslat později
+  err.network = !navigator.onLine || /failed to fetch|load failed|networkerror|network request failed|fetch failed/i.test(msg);
+  throw err;
 }
 const check = ({ data, error }) => (error ? fail(error) : data);
 
@@ -77,10 +80,15 @@ async function uploadFiles(defectId, files, onProgress) {
   }
 }
 
-async function removeFrom(bucket, paths) {
-  if (paths.length) check(await sb.storage.from(bucket).remove(paths));
+// Načte všechny řádky po stránkách (Supabase vrací nejvýš 1000 řádků na dotaz)
+async function fetchAll(build, pageSize = 1000) {
+  const rows = [];
+  for (let from = 0; ; from += pageSize) {
+    const page = check(await build().range(from, from + pageSize - 1));
+    rows.push(...page);
+    if (page.length < pageSize) return rows;
+  }
 }
-const removeStorage = (paths) => removeFrom(BUCKET, paths);
 
 function base64UrlToBytes(s) {
   const b = atob((s + '='.repeat((4 - (s.length % 4)) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
@@ -152,12 +160,8 @@ export const api = {
   async updateWagon(id, patch) {
     check(await sb.from('wagons').update(patch).eq('id', id));
   },
+  // Smazané záznamy jdou do koše (historie v databázi), soubory se nemažou, aby šly obnovit
   async deleteWagon(id) {
-    const defects = check(await sb.from('defects').select('id').eq('wagon_id', id));
-    if (defects.length) {
-      const atts = check(await sb.from('attachments').select('path').in('defect_id', defects.map((d) => d.id)));
-      await removeStorage(atts.map((a) => a.path));
-    }
     check(await sb.from('wagons').delete().eq('id', id));
   },
 
@@ -182,17 +186,11 @@ export const api = {
   async updateDefect(id, { description, found_at, defect_code }, newFiles = [], removeIds = [], onProgress) {
     const patch = { description: description.trim(), defect_code: defect_code || null, ...(found_at ? { found_at } : {}) };
     check(await sb.from('defects').update(patch).eq('id', id));
-    if (removeIds.length) {
-      const atts = check(await sb.from('attachments').select('path').in('id', removeIds));
-      await removeStorage(atts.map((a) => a.path));
-      check(await sb.from('attachments').delete().in('id', removeIds));
-    }
+    if (removeIds.length) check(await sb.from('attachments').delete().in('id', removeIds));
     await uploadFiles(id, newFiles, onProgress);
   },
   async deleteDefect(id) {
-    const atts = check(await sb.from('attachments').select('path').eq('defect_id', id));
     check(await sb.from('defects').delete().eq('id', id));
-    await removeStorage(atts.map((a) => a.path)).catch(() => {});
   },
   async resolveDefect(id, note) {
     check(await sb.from('defects')
@@ -260,7 +258,67 @@ export const api = {
   },
   async deleteRegulation(r) {
     check(await sb.from('regulations').delete().eq('id', r.id));
-    await removeFrom(REG_BUCKET, [r.path]).catch(() => {});
+  },
+
+  // Přehled závad napříč vozy: status 'open' | 'resolved' | 'all'
+  async listOverview(status = 'open') {
+    const cols = 'id, wagon_id, description, defect_code, found_at, created_at, created_by, created_by_name, '
+      + 'resolved_at, resolved_by_name, resolution_note, comment_count';
+    const defects = () => {
+      let q = sb.from('defect_feed').select(cols);
+      if (status === 'open') q = q.is('resolved_at', null);
+      if (status === 'resolved') q = q.not('resolved_at', 'is', null);
+      return q.order('found_at', { ascending: false }).order('id');
+    };
+    const [rows, wagons, groups, atts] = await Promise.all([
+      fetchAll(defects),
+      fetchAll(() => sb.from('wagons').select('id, number, group_id').order('id')),
+      api.listGroups(),
+      fetchAll(() => sb.from('attachments').select('defect_id').order('id')),
+    ]);
+    const wagonMap = new Map(wagons.map((w) => [w.id, w]));
+    const groupMap = new Map(groups.map((g) => [g.id, g.name]));
+    const attCount = new Map();
+    for (const a of atts) attCount.set(a.defect_id, (attCount.get(a.defect_id) ?? 0) + 1);
+    return rows.map((d) => {
+      const w = wagonMap.get(d.wagon_id);
+      return { ...d, number: w?.number ?? '', group_id: w?.group_id, group_name: groupMap.get(w?.group_id) ?? '',
+        attachment_count: attCount.get(d.id) ?? 0 };
+    });
+  },
+
+  // Historie změn a koš (tabulka audit_log, plní ji databáze sama)
+  async listHistory(defectId) {
+    return check(await sb.from('audit_log').select('id, tx, at, actor_name, tbl, action, old_row, new_row')
+      .eq('defect_id', defectId).order('at').order('id'));
+  },
+  async listAudit(limit = 300) {
+    return check(await sb.from('audit_log')
+      .select('id, tx, at, actor_name, tbl, row_id, action, old_row, new_row, wagon_id, defect_id, restored_at')
+      .order('id', { ascending: false }).limit(limit));
+  },
+  async listTrash() {
+    return fetchAll(() => sb.from('audit_log').select('id, tx, at, actor_name, tbl, row_id, old_row, wagon_id, defect_id')
+      .eq('action', 'delete').is('restored_at', null).order('id', { ascending: false }));
+  },
+  async restoreDeleted(tx) {
+    return check(await sb.rpc('restore_deleted', { p_tx: tx }));
+  },
+  async listWagonNumbers() {
+    const rows = await fetchAll(() => sb.from('wagons').select('id, number').order('id'));
+    return new Map(rows.map((w) => [w.id, w.number]));
+  },
+
+  // Pravidelné exporty na e-mail (nastavuje správce, rozesílá server)
+  async listExportSchedules() {
+    return check(await sb.from('export_schedules').select('*').order('created_at'));
+  },
+  async saveExportSchedule({ id, ...fields }) {
+    if (id) check(await sb.from('export_schedules').update(fields).eq('id', id));
+    else check(await sb.from('export_schedules').insert(fields));
+  },
+  async deleteExportSchedule(id) {
+    check(await sb.from('export_schedules').delete().eq('id', id));
   },
 
   // Komentáře

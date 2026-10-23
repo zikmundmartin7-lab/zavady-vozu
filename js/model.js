@@ -55,6 +55,8 @@ export const can = {
   // Opravu (zelenou) označí opravář, správce, nebo autor u své vlastní závady.
   resolve: (me, defect) => can.use(me) && (['repairer', 'admin'].includes(me.role) || defect?.created_by === me.id),
   edit: (me, defect) => !!me && (defect.created_by === me.id || me.role === 'admin'),
+  // Opravená závada je zamčená: upravit nebo smazat ji smí jen správce
+  editDefect: (me, defect) => can.edit(me, defect) && (!defect.resolved_at || me.role === 'admin'),
   deleteComment: (me, c) => !!me && (c.author_id === me.id || me.role === 'admin'),
 };
 
