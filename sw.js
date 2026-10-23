@@ -1,12 +1,13 @@
 // Service worker: rychlé spuštění z paměti telefonu, offline záloha a push upozornění na nové závady.
 
-const CACHE = 'zavady-v16';
+const CACHE = 'zavady-v17';
+const PHOTO_CACHE = 'zavady-foto'; // fotky závad a obrázky katalogu (přežije novou verzi aplikace)
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/config.js', 'js/model.js', 'js/codes.js', 'js/ui.js', 'js/api/index.js', 'js/api/demo.js', 'js/api/supabase.js',
   'js/views/account.js', 'js/views/codes.js', 'js/views/defect.js', 'js/views/form.js', 'js/views/groups.js',
   'js/views/regulations.js', 'js/views/wagon.js', 'js/views/admin.js', 'js/views/overview.js',
-  'js/outbox.js', 'js/history.js', 'js/xlsx.js',
+  'js/outbox.js', 'js/history.js', 'js/xlsx.js', 'js/offline.js',
   'vendor/preact-htm.js', 'vendor/supabase.js', 'icons/icon.svg', 'icons/icon-192.png', 'icons/badge-96.png',
 ];
 
@@ -25,7 +26,7 @@ self.addEventListener('message', (e) => {
 // Po aktivaci smazat starou verzi a otevřeným oknům říct, že je k dispozici nová
 self.addEventListener('activate', (e) => {
   e.waitUntil((async () => {
-    const old = (await caches.keys()).filter((k) => k !== CACHE);
+    const old = (await caches.keys()).filter((k) => k !== CACHE && k !== PHOTO_CACHE);
     await Promise.all(old.map((k) => caches.delete(k)));
     await self.clients.claim();
     if (old.length) {
@@ -38,7 +39,23 @@ self.addEventListener('activate', (e) => {
 // Co v paměti není, stáhne se ze sítě; bez signálu se použije uložená verze.
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
-  if (e.request.method !== 'GET' || url.origin !== location.origin) return;
+  if (e.request.method !== 'GET') return;
+  // Fotky závad a obrázky katalogu ze Supabase: z paměti telefonu (klíč = cesta bez podpisu, podepsaný
+  // odkaz se každou hodinu mění, fotka ne), jinak ze sítě a uložit. Videa (stahují se po částech) ne.
+  if (/\.supabase\.co$/.test(url.hostname) && /^\/storage\/v1\/object\/sign\/(attachments|katalog)\//.test(url.pathname)) {
+    if (e.request.headers.has('range') || /\.(mp4|mov|webm|m4v|3gp)$/i.test(url.pathname)) return;
+    e.respondWith((async () => {
+      const cache = await caches.open(PHOTO_CACHE);
+      const key = url.origin + url.pathname;
+      const hit = await cache.match(key);
+      if (hit) return hit;
+      const res = await fetch(url.href, { mode: 'cors', credentials: 'omit' });
+      if (res.ok && (res.headers.get('content-type') ?? '').startsWith('image/')) cache.put(key, res.clone());
+      return res;
+    })());
+    return;
+  }
+  if (url.origin !== location.origin) return;
   e.respondWith((async () => {
     const cache = await caches.open(CACHE);
     const cached = await cache.match(e.request);

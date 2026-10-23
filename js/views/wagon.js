@@ -6,11 +6,11 @@ import {
   BottomNav, DefectCard, Empty, ErrorBox, Icon, Loading, TopBar, WagonNumber, replace, useApp, useLoad,
 } from '../ui.js';
 
-export function WagonView({ id, params }) {
-  const { api, me, refresh, toast, version, share } = useApp();
-  const wagon = useLoad(() => api.getWagon(id), [id]);
-  const defects = useLoad(() => api.listDefects(id), [id]);
-  const groups = useLoad(() => api.listGroups(), []);
+export function WagonView({ id }) {
+  const { api, me, refresh, toast, version } = useApp();
+  const wagon = useLoad(() => api.getWagon(id), [id], `wagon:${id}`);
+  const defects = useLoad(() => api.listDefects(id), [id], `defects:${id}`);
+  const groups = useLoad(() => api.listGroups(), [], 'groups');
   const [showHistory, setShowHistory] = useState(false);
   const w = wagon.data;
 
@@ -25,14 +25,6 @@ export function WagonView({ id, params }) {
   }, [id, version]);
   const isNew = (d) => !!seenBefore && !d.resolved_at && d.created_by !== me.id
     && Date.parse(d.created_at) > Date.parse(seenBefore);
-
-  // Po uložení nové závady nabídnout sdílení do WhatsAppu (#/vuz/ID?sdilet=ID_ZÁVADY)
-  useEffect(() => {
-    const defectId = params?.get('sdilet');
-    if (!defectId) return;
-    share(defectId, { afterSave: true });
-    history.replaceState(null, '', `#/vuz/${id}`);
-  }, [id]);
 
   if (wagon.error) return html`<${TopBar} back="#/" title="Vůz" /><main class="page"><${ErrorBox} error=${wagon.error} /></main>`;
   if (!w) {
@@ -86,7 +78,7 @@ export function WagonView({ id, params }) {
       ${defects.data && html`
         <h2 class="section-title">Aktivní závady (${open.length})</h2>
         ${open.length
-          ? open.map((d) => html`<${DefectCard} key=${d.id} d=${d} isNew=${isNew(d)} />`)
+          ? open.map((d) => html`<${DefectCard} key=${d.id} d=${d} wagon=${w} isNew=${isNew(d)} />`)
           : html`<${Empty}><${Icon} name="check" /> Na voze nejsou žádné aktivní závady.<//>`}
 
         <button class="btn btn-ghost block toggle" onClick=${() => setShowHistory(!showHistory)}
@@ -94,7 +86,7 @@ export function WagonView({ id, params }) {
           <${Icon} name="history" /> Historie oprav (${resolved.length})
           ${resolved.length > 0 && html`<${Icon} name="down" class=${showHistory ? 'flip' : ''} />`}
         </button>
-        ${showHistory && resolved.map((d) => html`<${DefectCard} key=${d.id} d=${d} />`)}`}
+        ${showHistory && resolved.map((d) => html`<${DefectCard} key=${d.id} d=${d} wagon=${w} />`)}`}
 
       ${can.admin(me) && html`
         <div class="danger-zone">

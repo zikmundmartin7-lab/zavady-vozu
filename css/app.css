@@ -32,6 +32,8 @@
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html, body { margin: 0; background: var(--bg); }
+/* vlastní obnovení stažením dolů (PullToRefresh) místo obnovení celé stránky prohlížečem */
+html, body { overscroll-behavior-y: contain; }
 body { min-height: 100dvh; overflow-x: hidden; }
 a { color: var(--primary); text-decoration: none; }
 h1, h2 { margin: 0; line-height: 1.25; }
@@ -552,3 +554,19 @@ fieldset.field .check-row { margin: .45rem 0; color: var(--text); font-weight: 5
 .link-note { margin-bottom: 14px; border-left: 5px solid var(--primary); }
 .link-note .small { margin-top: .35rem; color: var(--muted); }
 .app-version { text-align: center; margin-top: 1rem; }
+
+/* ───── Obnovení stažením dolů ───── */
+
+.ptr {
+  position: fixed; top: 0; left: 50%; z-index: 40;
+  display: inline-flex; align-items: center; gap: .5rem; padding: .45rem .9rem;
+  background: var(--surface); color: var(--text); border-radius: 999px; box-shadow: 0 2px 10px rgba(0, 0, 0, .18);
+  font-size: .88rem; font-weight: 600; white-space: nowrap; pointer-events: none;
+}
+.ptr .icon { transition: transform .15s; }
+
+/* ───── Okno sdílení: jiné možnosti ───── */
+
+.share-preview { margin-top: .4rem; }
+.share-more { margin-top: .6rem; }
+.share-more summary { cursor: pointer; color: var(--primary); font-weight: 600; padding: .4rem 0; }

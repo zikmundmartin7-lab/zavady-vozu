@@ -1,9 +1,10 @@
 // Vstupní bod: přihlášení, směrování (#/...), živé aktualizace, upozornění, service worker.
 
-import { html, render, useEffect, useState } from '../vendor/preact-htm.js';
+import { html, render, useCallback, useEffect, useState } from '../vendor/preact-htm.js';
 import { api } from './api/index.js';
 import { can, formatNumber } from './model.js';
-import { AppCtx, Lightbox, Loading, ShareDialog, Toasts, clearLocalCache } from './ui.js';
+import { AppCtx, Lightbox, Loading, PullToRefresh, ShareDialog, Toasts, clearLocalCache } from './ui.js';
+import { lastPrefetchAt, prefetchAll } from './offline.js';
 import { AccountView, LoginView, PendingView, RecoveryView, UsersView } from './views/account.js';
 import { DefectView } from './views/defect.js';
 import { syncOutbox } from './outbox.js';
@@ -49,7 +50,7 @@ function useRoute() {
 function Page({ route }) {
   switch (route.name) {
     case 'skupina': return html`<${GroupView} id=${Number(route.id)} />`;
-    case 'vuz': return html`<${WagonView} id=${route.id} params=${route.params} />`;
+    case 'vuz': return html`<${WagonView} id=${route.id} />`;
     case 'zavada': return html`<${DefectView} id=${route.id} />`;
     case 'nova': return html`<${DefectFormView} params=${route.params} />`;
     case 'upravit': return html`<${DefectFormView} editId=${route.id} params=${route.params} />`;
@@ -111,16 +112,41 @@ function App() {
     api.listProfiles().then((p) => setPendingUsers(p.filter((u) => u.role === 'pending').length), () => {});
   }, [me?.id, me?.role, version]);
 
-  // Zápis bez signálu: čekající závady odeslat po spuštění, po návratu signálu a pak každou minutu
+  // Zápis bez signálu: čekající závady odeslat po spuštění, po návratu signálu, po návratu do aplikace
+  // a pak každou minutu. Stahování na pozadí: po spuštění, po návratu signálu a po návratu do aplikace
+  // (nejvýš jednou za 15 minut), ať je v telefonu vše potřebné i pro chvíle bez signálu.
+  const sendOutbox = () => syncOutbox(api).then((n) => {
+    if (n) { toast(`Odesláno ze zápisu bez signálu: ${n}.`); setVersion((v) => v + 1); }
+  }, () => {});
+  const prefetch = () => prefetchAll(api).catch(() => {});
   useEffect(() => {
     if (!can.use(me)) return undefined;
-    const send = () => navigator.onLine && syncOutbox(api).then((n) => {
-      if (n) { toast(`Odesláno ze zápisu bez signálu: ${n}.`); setVersion((v) => v + 1); }
-    }, () => {});
+    const send = () => navigator.onLine && sendOutbox();
+    const fetchAllData = () => navigator.onLine && prefetch();
+    const onOnline = () => { send(); fetchAllData(); };
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      send();
+      if (Date.now() - lastPrefetchAt() > 15 * 60000) fetchAllData();
+    };
     send();
-    addEventListener('online', send);
+    const first = setTimeout(fetchAllData, 4000); // až po načtení první obrazovky
+    addEventListener('online', onOnline);
+    document.addEventListener('visibilitychange', onVisible);
     const timer = setInterval(send, 60000);
-    return () => { removeEventListener('online', send); clearInterval(timer); };
+    return () => {
+      clearTimeout(first);
+      clearInterval(timer);
+      removeEventListener('online', onOnline);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [me?.id, me?.role]);
+
+  // Stažení dolů (na začátku stránky): odeslat čekající závady, stáhnout vše znovu, zkontrolovat novou verzi
+  const pullRefresh = useCallback(async () => {
+    navigator.serviceWorker?.getRegistration().then((r) => r?.update()).catch(() => {});
+    if (can.use(me) && navigator.onLine) await Promise.all([sendOutbox(), prefetch()]);
+    setVersion((v) => v + 1);
   }, [me?.id, me?.role]);
 
   // Nová verze aplikace (service worker ji stáhl na pozadí) → nabídnout načtení
@@ -173,6 +199,7 @@ function App() {
       ${content}
       <${Toasts} items=${toasts} dismiss=${dismiss} />
       ${media && html`<${Lightbox} ...${media} onClose=${() => setMedia(null)} />`}
+      ${me && html`<${PullToRefresh} onRefresh=${pullRefresh} />`}
       ${sharing && me && html`<${ShareDialog} key=${sharing.id} ...${sharing} onClose=${() => setSharing(null)} />`}
     <//>`;
 }

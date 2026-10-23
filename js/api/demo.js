@@ -384,6 +384,21 @@ export const api = {
     return rows.sort((a, b) => (b.found_at ?? b.created_at).localeCompare(a.found_at ?? a.created_at));
   },
 
+  // Všechna data najednou pro stahování na pozadí (offline.js)
+  async snapshot() {
+    requireMember();
+    const open = new Set(state.defects.filter((d) => !d.resolved_at).map((d) => d.id));
+    return {
+      groups: await api.listGroups(),
+      wagons: state.wagons.map(wagonOverview),
+      defects: await Promise.all(state.defects.map(defectFeed)),
+      comments: state.comments.filter((c) => open.has(c.defect_id))
+        .map((c) => ({ ...c, author_name: nameOf(c.author_id) }))
+        .sort((x, y) => x.created_at.localeCompare(y.created_at)),
+      overview: await api.listOverview('all'),
+    };
+  },
+
   // Historie změn a koš
   async listHistory(defectId) {
     requireMember();

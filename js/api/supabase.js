@@ -51,19 +51,42 @@ async function currentUserId() {
   return data.session?.user.id ?? null;
 }
 
+// Podepsané odkazy na soubory (platí hodinu); po částech, ať dotaz nepřeroste
+async function signedUrls(paths) {
+  const urls = new Map();
+  for (let i = 0; i < paths.length; i += 500) {
+    const signed = check(await sb.storage.from(BUCKET).createSignedUrls(paths.slice(i, i + 500), 3600));
+    for (const s of signed) urls.set(s.path, s.signedUrl);
+  }
+  return urls;
+}
+
+function attachUrls(defects, atts, urls) {
+  return defects.map((d) => ({
+    ...d,
+    attachments: atts.filter((a) => a.defect_id === d.id).map((a) => ({ ...a, url: urls.get(a.path) ?? '' })),
+  }));
+}
+
 async function withUrls(defects) {
   const ids = defects.map((d) => d.id);
   const atts = ids.length
     ? check(await sb.from('attachments').select('*').in('defect_id', ids).order('created_at'))
     : [];
-  const signed = atts.length
-    ? check(await sb.storage.from(BUCKET).createSignedUrls(atts.map((a) => a.path), 3600))
-    : [];
-  const urls = new Map(signed.map((s) => [s.path, s.signedUrl]));
-  return defects.map((d) => ({
-    ...d,
-    attachments: atts.filter((a) => a.defect_id === d.id).map((a) => ({ ...a, url: urls.get(a.path) ?? '' })),
-  }));
+  return attachUrls(defects, atts, await signedUrls(atts.map((a) => a.path)));
+}
+
+// Řádek přehledu závad: závada + číslo vozu, skupina a počet příloh
+function overviewRows(defects, wagons, groups, atts) {
+  const wagonMap = new Map(wagons.map((w) => [w.id, w]));
+  const groupMap = new Map(groups.map((g) => [g.id, g.name]));
+  const attCount = new Map();
+  for (const a of atts) attCount.set(a.defect_id, (attCount.get(a.defect_id) ?? 0) + 1);
+  return defects.map(({ attachments, ...d }) => {
+    const w = wagonMap.get(d.wagon_id);
+    return { ...d, number: w?.number ?? '', group_id: w?.group_id, group_name: groupMap.get(w?.group_id) ?? '',
+      attachment_count: attCount.get(d.id) ?? 0 };
+  });
 }
 
 async function uploadFiles(defectId, files, onProgress) {
@@ -280,15 +303,27 @@ export const api = {
       api.listGroups(),
       fetchAll(() => sb.from('attachments').select('defect_id').order('id')),
     ]);
-    const wagonMap = new Map(wagons.map((w) => [w.id, w]));
-    const groupMap = new Map(groups.map((g) => [g.id, g.name]));
-    const attCount = new Map();
-    for (const a of atts) attCount.set(a.defect_id, (attCount.get(a.defect_id) ?? 0) + 1);
-    return rows.map((d) => {
-      const w = wagonMap.get(d.wagon_id);
-      return { ...d, number: w?.number ?? '', group_id: w?.group_id, group_name: groupMap.get(w?.group_id) ?? '',
-        attachment_count: attCount.get(d.id) ?? 0 };
-    });
+    return overviewRows(rows, wagons, groups, atts);
+  },
+
+  // Všechna data najednou pro stahování na pozadí (offline.js): skupiny, vozy, závady s odkazy na fotky,
+  // komentáře k neopraveným závadám a řádky přehledu
+  async snapshot() {
+    const [groups, wagons, defects, atts] = await Promise.all([
+      api.listGroups(),
+      fetchAll(() => sb.from('wagon_overview').select('*').order('id')),
+      fetchAll(() => sb.from('defect_feed').select('*').order('id')),
+      fetchAll(() => sb.from('attachments').select('*').order('created_at').order('id')),
+    ]);
+    const withAtt = attachUrls(defects, atts, await signedUrls(atts.map((a) => a.path)));
+    const openIds = defects.filter((d) => !d.resolved_at).map((d) => d.id);
+    const comments = [];
+    for (let i = 0; i < openIds.length; i += 100) {
+      const part = openIds.slice(i, i + 100);
+      comments.push(...await fetchAll(() => sb.from('comment_feed').select('*').in('defect_id', part)
+        .order('created_at').order('id')));
+    }
+    return { groups, wagons, defects: withAtt, comments, overview: overviewRows(defects, wagons, groups, atts) };
   },
 
   // Historie změn a koš (tabulka audit_log, plní ji databáze sama)

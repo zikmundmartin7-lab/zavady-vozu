@@ -49,7 +49,7 @@ export function OverviewView() {
   const { api, toast } = useApp();
   const catalog = useCatalog();
   const [status, setStatus] = useState('open');
-  const data = useLoad(() => api.listOverview(status), [status]);
+  const data = useLoad(() => api.listOverview(status), [status], `overview:${status}`);
   const groups = useLoad(() => api.listGroups(), [], 'groups');
   const [groupIds, setGroupIds] = useState([]); // prázdné = všechny skupiny
   const [q, setQ] = useState('');

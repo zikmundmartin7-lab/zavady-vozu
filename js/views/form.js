@@ -36,7 +36,7 @@ function Preview({ kind, url, onRemove }) {
 }
 
 export function DefectFormView({ editId, params }) {
-  const { api, me, toast } = useApp();
+  const { api, me, toast, share } = useApp();
   const presetWagonId = params.get('vuz');
   const existingDefect = useLoad(() => (editId ? api.getDefect(editId) : Promise.resolve(null)), [editId]);
   const fixedWagonId = editId ? existingDefect.data?.wagon_id : presetWagonId;
@@ -129,8 +129,16 @@ export function DefectFormView({ editId, params }) {
       const created = await api.createDefect({ wagon_id: wagon.id, description, found_at, defect_code: code }, files,
         (i, n) => setBusy(`Nahrávám přílohu ${i}/${n}…`));
       toast('Závada uložena. Ostatní uživatelé dostanou upozornění.');
-      // Ve zkušebním provozu běží souběžně skupina na WhatsAppu → hned nabídnout sdílení
-      replace(`#/vuz/${wagon.id}${created?.id ? `?sdilet=${created.id}` : ''}`);
+      // Ve zkušebním provozu běží souběžně skupina na WhatsAppu → hned nabídnout poslání (vše je v telefonu,
+      // nic se nestahuje: text ze zadaných údajů, fotky přímo z formuláře)
+      if (created?.id) {
+        share(created.id, { afterSave: true, prepared: {
+          d: { ...created, created_by_name: me.full_name, attachments: [] },
+          w: wagon,
+          files: files.filter((f) => f.type.startsWith('image/')),
+        } });
+      }
+      replace(`#/vuz/${wagon.id}`);
     } catch (err) {
       // Bez signálu: novou závadu uložit v telefonu a odeslat později (úpravy jen s připojením)
       if (!editId && (err.network || !navigator.onLine) && description.trim()) {

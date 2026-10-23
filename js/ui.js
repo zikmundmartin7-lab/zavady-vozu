@@ -11,23 +11,45 @@ export const useApp = () => useContext(AppCtx);
 export const go = (hash) => { location.hash = hash; };
 export const replace = (hash) => { location.replace(hash); };
 
-// Poslední známá data (např. skupiny s počty závad) – zobrazí se hned při spuštění, pak se obnoví.
+// Poslední známá data (skupiny, vozy, závady, komentáře, přehled) – zobrazí se hned, pak se obnoví ze sítě.
+// Plní je i stahování na pozadí (offline.js), takže aplikace funguje i se slabým signálem.
 // Při odhlášení se mažou (clearLocalCache).
 const CACHE_PREFIX = 'zavady-cache:';
+export const PHOTO_CACHE = 'zavady-foto'; // fotky závad v paměti telefonu (plní sw.js a offline.js)
 const memoryCache = new Map();
+function readStored(key) {
+  try { return JSON.parse(localStorage.getItem(CACHE_PREFIX + key)) ?? undefined; } catch { return undefined; }
+}
+// Závada, kterou ještě nikdo neotevřel, se najde v uloženém seznamu závad jejího vozu
+function findCachedDefect(mode, id) {
+  try {
+    for (const k of Object.keys(localStorage)) {
+      if (!k.startsWith(`${CACHE_PREFIX}${mode}:defects:`)) continue;
+      const d = (JSON.parse(localStorage.getItem(k)) ?? []).find((x) => x.id === id);
+      if (d) return d;
+    }
+  } catch { /* nevadí */ }
+  return undefined;
+}
 function readCache(key) {
   if (memoryCache.has(key)) return memoryCache.get(key);
-  try { return JSON.parse(localStorage.getItem(CACHE_PREFIX + key)) ?? undefined; } catch { return undefined; }
+  const v = readStored(key);
+  if (v !== undefined) return v;
+  const m = /^(\w+):defect:(.+)$/.exec(key);
+  return m ? findCachedDefect(m[1], m[2]) : undefined;
 }
 function writeCache(key, data) {
   memoryCache.set(key, data);
   try { localStorage.setItem(CACHE_PREFIX + key, JSON.stringify(data)); } catch { /* plná paměť – nevadí */ }
 }
+export const readCached = (mode, key) => readCache(`${mode}:${key}`);
+export const writeCached = (mode, key, data) => writeCache(`${mode}:${key}`, data);
 export function clearLocalCache() {
   memoryCache.clear();
   try {
     Object.keys(localStorage).filter((k) => k.startsWith(CACHE_PREFIX)).forEach((k) => localStorage.removeItem(k));
   } catch { /* nevadí */ }
+  window.caches?.delete(PHOTO_CACHE).catch(() => {});
 }
 
 // Načte data a znovu je načte při změně závislostí nebo při živé změně v databázi (app.version).
@@ -286,7 +308,7 @@ export function WagonSearch({ groupId, onQuery }) {
 
 // ───── Karta závady ─────
 
-export function DefectCard({ d, showComments = true, isNew = false }) {
+export function DefectCard({ d, wagon = null, showComments = true, isNew = false }) {
   const { api, me, refresh, toast, openMedia, share } = useApp();
   const [resolving, setResolving] = useState(false);
   const [note, setNote] = useState('');
@@ -372,7 +394,8 @@ export function DefectCard({ d, showComments = true, isNew = false }) {
           <a class="btn btn-ghost" href="#/zavada/${d.id}"><${Icon} name="chat" size=${18} />
             ${d.comment_count ? plural(d.comment_count, 'komentář', 'komentáře', 'komentářů') : 'Komentovat'}</a>`}
         <span class="spacer"></span>
-        <button class="btn btn-ghost" onClick=${() => share(d.id)} title="Sdílet (WhatsApp…)" aria-label="Sdílet závadu"><${Icon} name="share" size=${18} /></button>
+        <button class="btn btn-ghost" title="Poslat do WhatsAppu" aria-label="Poslat závadu do WhatsAppu"
+          onClick=${() => quickShare({ d, w: wagon, catalog, openDialog: (prepared) => share(d.id, { prepared }) })}><${Icon} name="share" size=${18} /></button>
         ${resolved && can.resolve(me, d) && html`
           <button class="btn btn-ghost" disabled=${busy} onClick=${reopen} title="Vrátit mezi neopravené"><${Icon} name="undo" size=${18} /></button>`}
         ${can.editDefect(me, d) && html`
@@ -387,11 +410,22 @@ export function DefectCard({ d, showComments = true, isNew = false }) {
 
 // ───── Sdílení závady do WhatsAppu (nebo jinam přes nabídku sdílení telefonu) ─────
 
-// Text zprávy; *hvězdičky* = tučně ve WhatsAppu. Text z katalogu kódů se nesdílí (katalog je jen pro členy).
-export function defectShareText(d, w) {
+// Popis kódu z katalogu: „Brzda › Ruční brzda – Ruční brzda nefunkční“
+export function codeSummaryText(code, catalog) {
+  const c = catalog?.find((x) => x.kod === code);
+  if (!c) return '';
+  const text = [c.kontext, c.popis].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+  return [c.cesta, text].filter(Boolean).join(' – ');
+}
+
+// Text zprávy; *hvězdičky* = tučně ve WhatsAppu
+export function defectShareText(d, w, catalog) {
   const who = (name) => name || 'neznámý uživatel';
   const lines = [`*Závada – vůz ${formatNumber(w.number)}*${w.group_name ? ` (${w.group_name})` : ''}`];
-  if (d.defect_code) lines.push(`Kód závady: ${d.defect_code}`);
+  if (d.defect_code) {
+    const summary = codeSummaryText(d.defect_code, catalog);
+    lines.push(`Kód závady: ${d.defect_code}${summary ? ` – ${summary}` : ''}`);
+  }
   lines.push(d.description.trim());
   lines.push(`Zjištěno ${formatDateTime(foundAtOf(d))} · ${who(d.created_by_name)}`);
   if (d.resolved_at) {
@@ -403,10 +437,10 @@ export function defectShareText(d, w) {
   return lines.join('\n');
 }
 
-// Fotky závady jako soubory pro sdílení (videa ne – bývají velká)
+// Fotky závady jako soubory pro sdílení (videa ne – bývají velká). Fotky z paměti telefonu jsou hned.
 async function photoFiles(d, w) {
   const out = [];
-  const photos = (d.attachments ?? []).filter((a) => a.kind !== 'video');
+  const photos = (d.attachments ?? []).filter((a) => a.kind !== 'video' && a.url);
   for (const [i, a] of photos.entries()) {
     try {
       const blob = await (await fetch(a.url)).blob();
@@ -418,40 +452,68 @@ async function photoFiles(d, w) {
   return out;
 }
 
-export function ShareDialog({ id, afterSave = false, onClose }) {
+const shareable = (files) => (files?.length && navigator.canShare?.({ files }) ? files : []);
+
+async function nativeShare(text, files) {
+  // WhatsApp na iPhonu k fotkám text někdy nepřipojí – ať je aspoň ve schránce
+  if (files.length) navigator.clipboard?.writeText(text).catch(() => {});
+  await navigator.share(files.length ? { text, files } : { text });
+}
+
+/**
+ * Sdílení na jedno klepnutí: rovnou otevře nabídku sdílení telefonu (text + fotky).
+ * Když to nejde (počítač, fotky se stahují dlouho, telefon sdílení odmítne), otevře okno s jedním tlačítkem.
+ */
+export async function quickShare({ d, w, catalog, openDialog }) {
+  if (!w || typeof navigator.share !== 'function') { openDialog({}); return; }
+  const text = defectShareText(d, w, catalog);
+  const filesPromise = photoFiles(d, w);
+  const files = await Promise.race([filesPromise, new Promise((res) => setTimeout(() => res(null), 2500))]);
+  if (files === null) { openDialog({ d, w, filesPromise }); return; }
+  try {
+    await nativeShare(text, shareable(files));
+  } catch (e) {
+    if (e.name !== 'AbortError') openDialog({ d, w, files });
+  }
+}
+
+/** Okno pro sdílení: náhled zprávy a jedno velké tlačítko. prepared = { d, w, files | filesPromise } (bez sítě). */
+export function ShareDialog({ id, afterSave = false, prepared = {}, onClose }) {
   const { api, toast } = useApp();
-  const [data, setData] = useState(null);    // { d, w, text }
-  const [files, setFiles] = useState(null);  // null = připravuji fotky
-  const [withPhotos, setWithPhotos] = useState(true);
+  const catalog = useCatalog();
+  const [data, setData] = useState(prepared.d && prepared.w ? { d: prepared.d, w: prepared.w } : null);
+  const [files, setFiles] = useState(prepared.files ? shareable(prepared.files) : null); // null = připravuji fotky
   const [error, setError] = useState(null);
 
   useEffect(() => {
     let alive = true;
     (async () => {
-      const d = await api.getDefect(id);
-      if (!d) throw new Error('Závada nebyla nalezena (možná byla smazána).');
-      const w = await api.getWagon(d.wagon_id);
-      if (!alive) return;
-      setData({ d, w, text: defectShareText(d, w) });
-      const f = await photoFiles(d, w);
-      if (alive) setFiles(f.length && navigator.canShare?.({ files: f }) ? f : []);
+      let { d, w } = prepared;
+      if (!d || !w) {
+        d = await api.getDefect(id);
+        if (!d) throw new Error('Závada nebyla nalezena (možná byla smazána).');
+        w = await api.getWagon(d.wagon_id);
+        if (alive) setData({ d, w });
+      }
+      if (!prepared.files) {
+        const f = await (prepared.filesPromise ?? photoFiles(d, w));
+        if (alive) setFiles(shareable(f));
+      }
     })().catch((e) => alive && setError(e));
     const onKey = (e) => e.key === 'Escape' && onClose();
     addEventListener('keydown', onKey);
     return () => { alive = false; removeEventListener('keydown', onKey); };
   }, [id]);
 
-  const text = data?.text ?? '';
-  const photoCount = (data?.d.attachments ?? []).filter((a) => a.kind !== 'video').length;
+  const text = data ? defectShareText(data.d, data.w, catalog) : '';
   const canNative = typeof navigator.share === 'function';
-  const preparing = withPhotos && photoCount > 0 && files === null;
+  const photoCount = (data?.d.attachments ?? []).filter((a) => a.kind !== 'video').length || prepared.files?.length || 0;
+  const preparing = canNative && photoCount > 0 && files === null;
+  const waLink = `https://wa.me/?text=${encodeURIComponent(text)}`;
 
-  async function shareNative() {
-    const shared = withPhotos ? files ?? [] : [];
+  async function send() {
     try {
-      // WhatsApp na iPhonu k fotkám text někdy nepřipojí – ať je aspoň ve schránce
-      if (shared.length) navigator.clipboard?.writeText(text).catch(() => {});
-      await navigator.share(shared.length ? { text, files: shared } : { text });
+      await nativeShare(text, files ?? []);
       onClose();
     } catch (e) {
       if (e.name !== 'AbortError') toast(`Sdílení se nepovedlo: ${e.message}`, { kind: 'error' });
@@ -466,37 +528,90 @@ export function ShareDialog({ id, afterSave = false, onClose }) {
     }
   }
 
+  const what = files?.length ? ` (text + ${plural(files.length, 'fotka', 'fotky', 'fotek')})` : '';
   return html`
     <div class="dialog-backdrop" onClick=${(e) => e.target === e.currentTarget && onClose()}>
       <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="share-title">
         <div class="dialog-head">
-          <h2 id="share-title">${afterSave ? 'Závada uložena – poslat i do WhatsAppu?' : 'Sdílet závadu'}</h2>
+          <h2 id="share-title">${afterSave ? 'Závada uložena – poslat do WhatsAppu?' : 'Poslat do WhatsAppu'}</h2>
           <button class="icon-btn" onClick=${onClose} aria-label="Zavřít"><${Icon} name="x" /></button>
         </div>
         <${ErrorBox} error=${error} />
         ${!data && !error && html`<${Loading} />`}
         ${data && html`
+          ${canNative
+            ? html`<button class="btn btn-whatsapp block big-btn" disabled=${preparing} onClick=${send}>
+                ${preparing ? 'Připravuji fotky…' : `Poslat do WhatsAppu${what}`}</button>
+              <p class="muted small">V nabídce klepněte na WhatsApp a vyberte skupinu.</p>`
+            : html`<a class="btn btn-whatsapp block big-btn" href=${waLink} target="_blank" rel="noopener">Otevřít WhatsApp</a>
+              <p class="muted small">Otevře se WhatsApp s připraveným textem, vyberete jen skupinu. Fotky pošlete z telefonu.</p>`}
           <div class="share-preview">${text}</div>
-          ${photoCount > 0 && (canNative
-            ? html`
-              <label class="check-row">
-                <input type="checkbox" checked=${withPhotos} onChange=${(e) => setWithPhotos(e.currentTarget.checked)} />
-                Přiložit ${plural(photoCount, 'fotku', 'fotky', 'fotek')}
-                ${preparing && html`<span class="muted small">(připravuji…)</span>`}
-                ${files?.length === 0 && withPhotos && html`<span class="muted small">(tento telefon fotky sdílet neumí)</span>`}
-              </label>`
-            : html`<p class="muted small">Fotky odsud poslat nejde – pošlete je z telefonu.</p>`)}
-          ${canNative && html`
-            <button class="btn btn-primary block" disabled=${preparing} onClick=${shareNative}>
-              <${Icon} name="share" size=${18} /> Sdílet… (WhatsApp, e-mail, …)</button>`}
-          <a class="btn btn-whatsapp block" href=${`https://wa.me/?text=${encodeURIComponent(text)}`} target="_blank" rel="noopener">
-            Otevřít WhatsApp${canNative ? ' (jen text)' : ''}</a>
-          <button class="btn block" onClick=${copy}><${Icon} name="clipboard" size=${18} /> Kopírovat text</button>
-          <p class="muted small">${canNative
-            ? 'V nabídce sdílení vyberte WhatsApp a pak skupinu. Pokud se na iPhonu k fotkám nepřipojí text, je už zkopírovaný – stačí ho ve WhatsAppu vložit.'
-            : 'Otevře se WhatsApp s připraveným textem, vyberete jen skupinu.'}</p>
+          <details class="share-more">
+            <summary>Jiné možnosti</summary>
+            ${canNative && html`<a class="btn block" href=${waLink} target="_blank" rel="noopener">WhatsApp jen s textem</a>`}
+            <button class="btn block" onClick=${copy}><${Icon} name="clipboard" size=${18} /> Kopírovat text</button>
+          </details>
           ${afterSave && html`<button class="btn btn-ghost block" onClick=${onClose}>Teď ne</button>`}`}
       </div>
+    </div>`;
+}
+
+// ───── Obnovení stažením dolů (když je stránka nahoře) ─────
+
+const PULL_MAX = 110;
+const PULL_TRIGGER = 70;
+
+export function PullToRefresh({ onRefresh }) {
+  const [pull, setPull] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const state = useRef({ startY: null, pull: 0, busy: false });
+
+  useEffect(() => {
+    const st = state.current;
+    // Ne v okně sdílení, prohlížeči fotek ani v textových polích
+    const blocked = (target) => document.querySelector('.lightbox, .dialog-backdrop')
+      || target.closest?.('textarea, input, select, .composer');
+    const onStart = (e) => {
+      st.startY = !st.busy && scrollY <= 0 && e.touches.length === 1 && !blocked(e.target) ? e.touches[0].clientY : null;
+    };
+    const onMove = (e) => {
+      if (st.startY === null) return;
+      const dy = e.touches[0].clientY - st.startY;
+      st.pull = dy > 0 && scrollY <= 0 ? Math.min(dy * 0.5, PULL_MAX) : 0;
+      setPull(st.pull);
+    };
+    const onEnd = async () => {
+      if (st.startY === null) return;
+      const go = st.pull >= PULL_TRIGGER;
+      st.startY = null; st.pull = 0;
+      setPull(0);
+      if (!go) return;
+      st.busy = true; setBusy(true);
+      try {
+        await Promise.all([onRefresh(), new Promise((r) => setTimeout(r, 600))]);
+      } finally {
+        st.busy = false; setBusy(false);
+      }
+    };
+    addEventListener('touchstart', onStart, { passive: true });
+    addEventListener('touchmove', onMove, { passive: true });
+    addEventListener('touchend', onEnd);
+    addEventListener('touchcancel', onEnd);
+    return () => {
+      removeEventListener('touchstart', onStart);
+      removeEventListener('touchmove', onMove);
+      removeEventListener('touchend', onEnd);
+      removeEventListener('touchcancel', onEnd);
+    };
+  }, [onRefresh]);
+
+  if (!pull && !busy) return null;
+  const ready = pull >= PULL_TRIGGER;
+  return html`
+    <div class="ptr" style=${`transform: translate(-50%, ${busy ? 64 : pull - 10}px)`} role="status">
+      ${busy
+        ? html`<span class="spinner"></span> Obnovuji…`
+        : html`<${Icon} name="down" class=${ready ? 'flip' : ''} /> ${ready ? 'Pusťte pro obnovení' : 'Táhněte dolů'}`}
     </div>`;
 }
 
