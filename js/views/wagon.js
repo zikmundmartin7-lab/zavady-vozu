@@ -1,7 +1,7 @@
 // Detail vozu: aktivní závady, skrytá historie oprav, správa vozu pro správce.
 
 import { html, useEffect, useRef, useState } from '../../vendor/preact-htm.js';
-import { can, checkDigit, formatNumber, foundAtOf, isValidCheckDigit, plural } from '../model.js';
+import { can, checkDigit, formatNumber, foundAtOf, groupLabel, isValidCheckDigit, plural } from '../model.js';
 import {
   BottomNav, DefectCard, Empty, ErrorBox, Icon, Loading, TopBar, WagonNumber, replace, useApp, useLoad,
 } from '../ui.js';
@@ -64,7 +64,7 @@ export function WagonView({ id }) {
           ${can.admin(me) && groups.data
             ? html`<label class="inline-select">Skupina:
                 <select value=${w.group_id} onChange=${changeGroup}>
-                  ${groups.data.map((g) => html`<option value=${g.id}>${g.name}</option>`)}
+                  ${groups.data.map((g) => html`<option value=${g.id}>${groupLabel(g)}</option>`)}
                 </select></label>`
             : html`<span class="muted">Skupina: <b>${w.group_name}</b></span>`}
         </div>

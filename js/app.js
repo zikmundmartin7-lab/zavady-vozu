@@ -92,7 +92,7 @@ function App() {
   const toast = (message, opts = {}) => {
     const id = ++toastSeq;
     setToasts((t) => [...t.slice(-2), { id, message, ...opts }]);
-    setTimeout(() => dismiss(id), opts.sticky ? 30000 : opts.kind === 'error' ? 7000 : opts.href ? 8000 : 3500);
+    setTimeout(() => dismiss(id), opts.duration ?? (opts.sticky ? 30000 : opts.kind === 'error' ? 7000 : opts.href ? 8000 : 3500));
   };
 
   useEffect(() => {

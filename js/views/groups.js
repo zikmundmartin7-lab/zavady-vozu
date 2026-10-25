@@ -3,8 +3,8 @@
 import { html, useState } from '../../vendor/preact-htm.js';
 import { plural } from '../model.js';
 import {
-  Badge, BottomNav, Empty, ErrorBox, Fab, Icon, Loading, NewBadge, OpenCount, OutboxBanner, TopBar, UserButton, WagonNumber,
-  WagonSearch, useApp, useLoad,
+  Badge, BottomNav, Empty, ErrorBox, Fab, GroupName, Icon, Loading, NewBadge, OpenCount, OutboxBanner, TopBar, UserButton,
+  WagonNumber, WagonSearch, useApp, useLoad,
 } from '../ui.js';
 
 export function HomeView() {
@@ -23,7 +23,7 @@ export function HomeView() {
         <nav class="groups">
           ${groups.data?.map((g) => html`
             <a key=${g.id} class="group-tile" href="#/skupina/${g.id}">
-              <span class="group-name">${g.name}</span>
+              <span class="group-name"><${GroupName} g=${g} /></span>
               <span class="group-sub">${g.open_count
                 ? plural(g.open_count, 'otevřená závada', 'otevřené závady', 'otevřených závad')
                 : 'bez otevřených závad'}</span>
@@ -63,7 +63,8 @@ export function GroupView({ id }) {
 
   return html`
     <${TopBar} back="#/" title=${g?.name ?? 'Skupina'}
-      sub=${g && (g.open_count ? plural(g.open_count, 'otevřená závada', 'otevřené závady', 'otevřených závad') : 'bez otevřených závad')}>
+      sub=${g && [g.slang, g.open_count
+        ? plural(g.open_count, 'otevřená závada', 'otevřené závady', 'otevřených závad') : 'bez otevřených závad'].filter(Boolean).join(' · ')}>
       <${NewBadge} n=${g?.new_count} class="badge-inline" />
       <${Badge} n=${g?.open_count} class="badge-inline" />
     <//>

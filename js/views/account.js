@@ -88,7 +88,7 @@ function RealLogin() {
           Přihlásit<small>už mám účet</small></button>
       </div>
       ${tab === 'register' && html`
-        <p class="muted small form-intro">Vytvořte si účet. Přijde vám e-mail pro potvrzení a pak účet schválí správce.
+        <p class="muted small form-intro">Vytvořte si účet. Pak ho ještě musí schválit správce.
           Heslo je předvyplněné ${DEFAULT_PASSWORD} – můžete ho nechat, nebo napsat vlastní.</p>
         <label class="field">Jméno a příjmení
           <input autocomplete="name" value=${name} onInput=${(e) => setName(e.currentTarget.value)} required /></label>`}

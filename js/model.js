@@ -42,6 +42,10 @@ export function matchesQuery(number, q) {
 
 // ───── Role, oprávnění ─────
 
+// Skupina vozů: odborný název (řady vozů, např. „Faccpp“) a slangový („Choper“, u některých není).
+// Na jeden řádek se píšou oba: „Faccpp – Choper“ (stejně jako group_name z databáze).
+export const groupLabel = (g) => [g?.name, g?.slang].filter(Boolean).join(' – ');
+
 // Základní heslo nového účtu (předvyplněné v registraci i při založení správcem); změnit ho jde, ale nemusí se
 export const DEFAULT_PASSWORD = '123456';
 

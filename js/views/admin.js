@@ -2,7 +2,7 @@
 
 import { html, useState } from '../../vendor/preact-htm.js';
 import { actorName, describe, groupTrash } from '../history.js';
-import { can, formatDateTime } from '../model.js';
+import { can, formatDateTime, groupLabel } from '../model.js';
 import { Empty, ErrorBox, Icon, Loading, TopBar, useApp, useLoad } from '../ui.js';
 
 const AdminOnly = ({ title }) => html`
@@ -62,7 +62,7 @@ export function AuditView() {
   const [limit, setLimit] = useState(200);
   const data = useLoad(async () => {
     const [entries, groups] = await Promise.all([api.listAudit(limit), api.listGroups()]);
-    return { entries, groups: new Map(groups.map((g) => [g.id, g.name])) };
+    return { entries, groups: new Map(groups.map((g) => [g.id, groupLabel(g)])) };
   }, [limit]);
   const [q, setQ] = useState('');
   if (!can.admin(me)) return html`<${AdminOnly} title="Historie změn" />`;
@@ -166,7 +166,7 @@ function ScheduleForm({ initial, groups, onDone }) {
         </label>
         ${!allGroups && groups?.map((g) => html`
           <label key=${g.id} class="check-row">
-            <input type="checkbox" checked=${f.group_ids.includes(g.id)} onChange=${() => toggleGroup(g.id)} /> ${g.name}
+            <input type="checkbox" checked=${f.group_ids.includes(g.id)} onChange=${() => toggleGroup(g.id)} /> ${groupLabel(g)}
           </label>`)}
         <span class="muted small">V Excelu bude list se všemi závadami a k tomu list pro každou skupinu.</span>
       </fieldset>

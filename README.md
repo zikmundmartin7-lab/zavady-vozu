@@ -4,7 +4,7 @@ Aplikace pro evidenci závad železničních vozů. Běží v prohlížeči na p
 
 ## Co umí
 
-- **Úvodní obrazovka:** skupiny vozů (Chopry, SA, UA, Vapy/Fals, Trakce/Zetky, Plošiňáky/Res/Smmp, Ostatní). Červený odznak ukazuje počet otevřených závad ve skupině.
+- **Úvodní obrazovka:** skupiny vozů – odborný název nahoře, slangový pod ním (Faccpp/Choper, Faccs/Sa, Ua, Fals/Vap, Uk, Gbgs/Trakce, Res, Smmp/Plošinové, Ostatní; v databázi `wagon_groups.name` a `slang`, na jeden řádek „Faccpp – Choper“). Červený odznak ukazuje počet otevřených závad ve skupině.
 - **Hledání podle posledního čtyřčíslí**: napíšou se jen 4 číslice, pomlčka před kontrolní číslicí je předvyplněná (`017-4`). Funguje na úvodní obrazovce i uvnitř skupiny a výsledky se ukazují už během psaní. Vložené celé číslo vozu se zkrátí na poslední 4 číslice.
 - **Detail vozu:** aktivní závady (oranžově) s kódem, datem, textem, fotkami a videi. Opravené závady jsou zelené a skryté pod tlačítkem **Historie oprav**.
 - **Nová závada:** číslo vozu ve formátu `XX XX XXXX XXX-X` s kontrolou kontrolní číslice (UIC, Luhnův algoritmus). Nový vůz se založí automaticky, stačí vybrat skupinu. Fotky lze vyfotit, video natočit nebo obojí vybrat z galerie. Fotky se před nahráním zmenší.

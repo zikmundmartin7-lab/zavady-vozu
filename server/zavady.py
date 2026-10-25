@@ -220,7 +220,9 @@ def load_defects(report, group_ids=None):
     defects = rest_all('defect_feed', 'id,wagon_id,description,defect_code,found_at,created_at,created_by_name,'
                        'resolved_at,resolved_by_name,resolution_note,comment_count', extra)
     wagons = {w['id']: w for w in rest_all('wagons', 'id,number,group_id')}
-    groups = rest('wagon_groups', {'select': 'id,name,sort', 'order': 'sort'})
+    groups = rest('wagon_groups', {'select': '*', 'order': 'sort'})
+    for g in groups:  # odborný a slangový název na jeden řádek: „Faccpp – Choper“ (jako v aplikaci)
+        g['name'] = ' – '.join(x for x in (g['name'], g.get('slang')) if x)
     names = {g['id']: g['name'] for g in groups}
     parts = {c['kod']: c['cesta'] for c in rest_all('defect_codes', 'kod,cesta', order='kod')}
     att = {}

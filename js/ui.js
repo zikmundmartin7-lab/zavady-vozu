@@ -197,6 +197,9 @@ export function BottomNav({ active }) {
     </nav>`;
 }
 
+// Název skupiny na dva řádky: odborný nahoře, slangový menším písmem pod ním
+export const GroupName = ({ g }) => html`${g.name}${g.slang && html`<small class="group-slang">${g.slang}</small>`}`;
+
 export const Loading = () => html`<div class="loading"><span class="spinner"></span> Načítám…</div>`;
 export const ErrorBox = ({ error }) => error ? html`<div class="error-box"><${Icon} name="alert" /> ${error.message ?? String(error)}</div>` : null;
 export const Empty = ({ children }) => html`<div class="empty">${children}</div>`;
@@ -394,7 +397,9 @@ export function DefectCard({ d, wagon = null, showComments = true, isNew = false
           <a class="btn btn-ghost" href="#/zavada/${d.id}"><${Icon} name="chat" size=${18} />
             ${d.comment_count ? plural(d.comment_count, 'komentář', 'komentáře', 'komentářů') : 'Komentovat'}</a>`}
         <button class="btn btn-whatsapp" title="Poslat do WhatsAppu" aria-label="Poslat závadu do WhatsAppu"
-          onClick=${() => quickShare({ d, w: wagon, catalog, openDialog: (prepared) => share(d.id, { prepared }) })}>
+          onClick=${() => quickShare({
+            d, w: wagon, catalog, openDialog: (prepared) => share(d.id, { prepared }), onShared: () => praise(toast),
+          })}>
           <${Icon} name="share" size=${18} /> WhatsApp</button>
         <span class="defect-tools">
           ${resolved && can.resolve(me, d) && html`
@@ -418,6 +423,15 @@ export function codeSummaryText(code, catalog) {
   if (!c) return '';
   const text = [c.kontext, c.popis].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
   return [c.cesta, text].filter(Boolean).join(' – ');
+}
+
+// Pochvala po zapsání nebo sdílení závady. Po uložení se hned nabízí sdílení – tam se už znovu neukáže.
+const PRAISE = 'Děkuji za zapsání závady, super, že jste dali vědět kolegům 👍';
+let praisedAt = 0;
+export function praise(toast, { title, always = false } = {}) {
+  if (!always && Date.now() - praisedAt < 3 * 60000) return;
+  praisedAt = Date.now();
+  toast(PRAISE, { title, duration: 6000 });
 }
 
 // Text zprávy; *hvězdičky* = tučně ve WhatsAppu
@@ -466,7 +480,7 @@ async function nativeShare(text, files) {
  * Sdílení na jedno klepnutí: rovnou otevře nabídku sdílení telefonu (text + fotky).
  * Když to nejde (počítač, fotky se stahují dlouho, telefon sdílení odmítne), otevře okno s jedním tlačítkem.
  */
-export async function quickShare({ d, w, catalog, openDialog }) {
+export async function quickShare({ d, w, catalog, openDialog, onShared }) {
   if (!w || typeof navigator.share !== 'function') { openDialog({}); return; }
   const text = defectShareText(d, w, catalog);
   const filesPromise = photoFiles(d, w);
@@ -474,6 +488,7 @@ export async function quickShare({ d, w, catalog, openDialog }) {
   if (files === null) { openDialog({ d, w, filesPromise }); return; }
   try {
     await nativeShare(text, shareable(files));
+    onShared?.();
   } catch (e) {
     if (e.name !== 'AbortError') openDialog({ d, w, files });
   }
@@ -516,6 +531,7 @@ export function ShareDialog({ id, afterSave = false, prepared = {}, onClose }) {
   async function send() {
     try {
       await nativeShare(text, files ?? []);
+      praise(toast);
       onClose();
     } catch (e) {
       if (e.name !== 'AbortError') toast(`Sdílení se nepovedlo: ${e.message}`, { kind: 'error' });
@@ -545,12 +561,14 @@ export function ShareDialog({ id, afterSave = false, prepared = {}, onClose }) {
             ? html`<button class="btn btn-whatsapp block big-btn" disabled=${preparing} onClick=${send}>
                 ${preparing ? 'Připravuji fotky…' : `Poslat do WhatsAppu${what}`}</button>
               <p class="muted small">V nabídce klepněte na WhatsApp a vyberte skupinu.</p>`
-            : html`<a class="btn btn-whatsapp block big-btn" href=${waLink} target="_blank" rel="noopener">Otevřít WhatsApp</a>
+            : html`<a class="btn btn-whatsapp block big-btn" href=${waLink} target="_blank" rel="noopener"
+                onClick=${() => praise(toast)}>Otevřít WhatsApp</a>
               <p class="muted small">Otevře se WhatsApp s připraveným textem, vyberete jen skupinu. Fotky pošlete z telefonu.</p>`}
           <div class="share-preview">${text}</div>
           <details class="share-more">
             <summary>Jiné možnosti</summary>
-            ${canNative && html`<a class="btn block" href=${waLink} target="_blank" rel="noopener">WhatsApp jen s textem</a>`}
+            ${canNative && html`<a class="btn block" href=${waLink} target="_blank" rel="noopener"
+              onClick=${() => praise(toast)}>WhatsApp jen s textem</a>`}
             <button class="btn block" onClick=${copy}><${Icon} name="clipboard" size=${18} /> Kopírovat text</button>
           </details>
           ${afterSave && html`<button class="btn btn-ghost block" onClick=${onClose}>Teď ne</button>`}`}

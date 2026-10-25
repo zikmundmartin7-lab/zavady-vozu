@@ -6,7 +6,7 @@ import {
   MAX_VIDEO_MB, can, checkDigit, checkFoundAt, digitsOnly, foundAtOf, formatNumber, isCompleteNumber,
   isValidCheckDigit, toLocalInput,
 } from '../model.js';
-import { Empty, ErrorBox, Icon, Loading, TopBar, WagonNumber, replace, useApp, useLoad } from '../ui.js';
+import { Empty, ErrorBox, GroupName, Icon, Loading, TopBar, WagonNumber, praise, replace, useApp, useLoad } from '../ui.js';
 import { CodePicker } from './codes.js';
 import { outbox } from '../outbox.js';
 
@@ -128,7 +128,7 @@ export function DefectFormView({ editId, params }) {
       if (!wagon) wagon = found && found !== 'offline' ? found : (await api.findWagon(number)) ?? await api.createWagon(number, groupId);
       const created = await api.createDefect({ wagon_id: wagon.id, description, found_at, defect_code: code }, files,
         (i, n) => setBusy(`Nahrávám přílohu ${i}/${n}…`));
-      toast('Závada uložena. Ostatní uživatelé dostanou upozornění.');
+      praise(toast, { title: 'Závada uložena', always: true });
       // Ve zkušebním provozu běží souběžně skupina na WhatsAppu → hned nabídnout poslání (vše je v telefonu,
       // nic se nestahuje: text ze zadaných údajů, fotky přímo z formuláře)
       if (created?.id) {
@@ -147,6 +147,7 @@ export function DefectFormView({ editId, params }) {
           defect_code: code || null, found_at: found_at ?? new Date().toISOString(), files,
         });
         toast('Bez signálu – závada je uložená v telefonu a odešle se sama, jakmile bude připojení.', { sticky: true });
+        praise(toast, { always: true });
         replace(fixedWagonId ? `#/vuz/${fixedWagonId}` : '#/');
         return;
       }
@@ -197,7 +198,7 @@ export function DefectFormView({ editId, params }) {
                 ${found === null && html`<div class="hint">Nový vůz – vyberte skupinu:</div>`}
                 <div class="chips-select">
                   ${groups.data?.map((g) => html`
-                    <button type="button" class="chip-btn ${groupId === g.id ? 'active' : ''}" onClick=${() => setGroupId(g.id)}>${g.name}</button>`)}
+                    <button type="button" class="chip-btn ${groupId === g.id ? 'active' : ''}" onClick=${() => setGroupId(g.id)}><${GroupName} g=${g} /></button>`)}
                 </div>`}`}
         </section>
 

@@ -2,15 +2,15 @@
 // Rozhraní je stejné jako u Supabase (supabase.js), takže aplikace neví, s čím pracuje.
 // Pravidla oprávnění jsou tu napodobena podle supabase/schema.sql.
 
-import { can, checkDigit, checkFoundAt, compressImage, matchesQuery, uid } from '../model.js';
+import { can, checkDigit, checkFoundAt, compressImage, groupLabel, matchesQuery, uid } from '../model.js';
 
 const KEY = 'zavady-demo-v2';
 const USER_KEY = 'zavady-demo-user';
 
 const GROUPS = [
-  [1, 'Chopry'], [2, 'SA'], [3, 'UA'], [4, 'Vapy/Fals'],
-  [5, 'Trakce/Zetky'], [6, 'Plošiňáky/Res/Smmp'], [7, 'Ostatní'],
-].map(([id, name]) => ({ id, name, sort: id }));
+  [1, 'Faccpp', 'Choper'], [2, 'Faccs', 'Sa'], [3, 'Ua'], [4, 'Fals', 'Vap'],
+  [5, 'Uk, Gbgs', 'Trakce'], [6, 'Res, Smmp', 'Plošinové'], [7, 'Ostatní'],
+].map(([id, name, slang = null]) => ({ id, name, slang, sort: id }));
 
 // Ukázkový katalog: jen pár vymyšlených kódů (skutečný katalog přílohy 9 VSP je jen v ostré verzi)
 const c = (kod, cesta, popis = '', opatreni = '', trida = '', kontext = '') =>
@@ -109,7 +109,7 @@ const requireMember = () => {
   return m;
 };
 const nameOf = (id) => state.profiles.find((p) => p.id === id)?.full_name ?? 'Neznámý uživatel';
-const groupName = (id) => GROUPS.find((g) => g.id === id)?.name ?? '';
+const groupName = (id) => groupLabel(GROUPS.find((g) => g.id === id));
 const findDefect = (id) => {
   const d = state.defects.find((x) => x.id === id);
   if (!d) throw new Error('Závada neexistuje (možná byla smazána).');

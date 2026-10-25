@@ -3,7 +3,7 @@
 
 import { SUPABASE_URL, SUPABASE_ANON_KEY, VAPID_PUBLIC_KEY } from '../config.js';
 import { IMAGE_NAME } from '../codes.js';
-import { DEFAULT_PASSWORD, compressImage, uid } from '../model.js';
+import { DEFAULT_PASSWORD, compressImage, groupLabel, uid } from '../model.js';
 
 // Knihovnu načítá už index.html (souběžně s ostatními soubory); tady jen záložně, kdyby chyběla.
 if (!window.supabase) {
@@ -80,7 +80,7 @@ async function withUrls(defects) {
 // Řádek přehledu závad: závada + číslo vozu, skupina a počet příloh
 function overviewRows(defects, wagons, groups, atts) {
   const wagonMap = new Map(wagons.map((w) => [w.id, w]));
-  const groupMap = new Map(groups.map((g) => [g.id, g.name]));
+  const groupMap = new Map(groups.map((g) => [g.id, groupLabel(g)]));
   const attCount = new Map();
   for (const a of atts) attCount.set(a.defect_id, (attCount.get(a.defect_id) ?? 0) + 1);
   return defects.map(({ attachments, ...d }) => {

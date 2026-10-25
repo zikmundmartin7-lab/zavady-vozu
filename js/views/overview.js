@@ -2,9 +2,10 @@
 
 import { html, useMemo, useState } from '../../vendor/preact-htm.js';
 import { fold } from '../codes.js';
-import { foundAtOf, formatDateTime, formatNumber, plural } from '../model.js';
+import { foundAtOf, formatDateTime, formatNumber, groupLabel, plural } from '../model.js';
 import {
-  BottomNav, Empty, ErrorBox, Icon, Loading, OutboxBanner, TopBar, UserButton, WagonNumber, useApp, useCatalog, useLoad,
+  BottomNav, Empty, ErrorBox, GroupName, Icon, Loading, OutboxBanner, TopBar, UserButton, WagonNumber, useApp, useCatalog,
+  useLoad,
 } from '../ui.js';
 
 const STATUS = { open: 'Neopravené', resolved: 'Opravené', all: 'Všechny' };
@@ -37,9 +38,9 @@ export async function exportDefects(rows, catalog, label, groups = [], chosen = 
   ];
   const present = chosen.length ? chosen : groups.filter((g) => rows.some((r) => r.group_id === g.id));
   const sheets = present.length === 1
-    ? [{ name: present[0].name, rows }]
+    ? [{ name: groupLabel(present[0]), rows }]
     : [{ name: 'Všechny závady', rows },
-      ...present.map((g) => ({ name: g.name, rows: rows.filter((r) => r.group_id === g.id) }))];
+      ...present.map((g) => ({ name: groupLabel(g), rows: rows.filter((r) => r.group_id === g.id) }))];
   const blob = buildXlsx(sheets.map((sh) => ({ ...sh, columns })));
   const day = new Date().toISOString().slice(0, 10);
   download(blob, `zavady-${label}-${day}.xlsx`);
@@ -120,7 +121,7 @@ export function OverviewView() {
           onClick=${() => setGroupIds([])}>Všechny skupiny</button>
         ${groups.data?.map((g) => html`
           <button type="button" key=${g.id} class="chip-btn ${groupIds.includes(g.id) ? 'active' : ''}"
-            aria-pressed=${groupIds.includes(g.id)} onClick=${() => toggleGroup(g.id)}>${g.name}</button>`)}
+            aria-pressed=${groupIds.includes(g.id)} onClick=${() => toggleGroup(g.id)}><${GroupName} g=${g} /></button>`)}
       </div>
       <button type="button" class="link-btn" onClick=${() => setMore(!more)}>${more ? 'Skrýt další filtry' : 'Další filtry (období, řazení)'}</button>
       ${more && html`

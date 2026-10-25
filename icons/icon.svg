@@ -1,12 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <clipPath id="l"><polygon points="-50,188 253,188 239,222 259,252 237,284 257,314 245,348 -50,348"/></clipPath>
+    <clipPath id="p"><polygon points="562,188 271,188 257,222 277,252 255,284 275,314 263,348 562,348"/></clipPath>
+  </defs>
   <rect width="512" height="512" rx="112" fill="#1f4e8c"/>
-  <rect x="56" y="398" width="400" height="12" rx="6" fill="#fff" opacity=".55"/>
-  <rect x="96" y="196" width="320" height="124" rx="14" fill="#fff"/>
-  <rect x="80" y="318" width="352" height="22" rx="6" fill="#fff"/>
-  <g fill="#fff"><circle cx="150" cy="368" r="27"/><circle cx="210" cy="368" r="27"/><circle cx="302" cy="368" r="27"/><circle cx="362" cy="368" r="27"/></g>
-  <g fill="#1f4e8c"><circle cx="150" cy="368" r="10"/><circle cx="210" cy="368" r="10"/><circle cx="302" cy="368" r="10"/><circle cx="362" cy="368" r="10"/></g>
-  <g fill="#1f4e8c" opacity=".25"><rect x="136" y="216" width="14" height="84" rx="4"/><rect x="186" y="216" width="14" height="84" rx="4"/><rect x="236" y="216" width="14" height="84" rx="4"/><rect x="286" y="216" width="14" height="84" rx="4"/></g>
-  <circle cx="392" cy="150" r="74" fill="#e5372b" stroke="#1f4e8c" stroke-width="12"/>
-  <rect x="381" y="104" width="22" height="64" rx="11" fill="#fff"/>
-  <circle cx="392" cy="192" r="12" fill="#fff"/>
+  <g transform="translate(0 -44)">
+    <rect x="56" y="398" width="400" height="12" rx="6" fill="#fff" opacity=".55"/>
+    <g transform="rotate(4 150 330)"><g clip-path="url(#l)"><rect x="96" y="196" width="320" height="124" rx="14" fill="#fff"/><rect x="80" y="318" width="352" height="22" rx="6" fill="#fff"/><g fill="#1f4e8c" opacity=".25"><rect x="128" y="216" width="14" height="84" rx="4"/><rect x="172" y="216" width="14" height="84" rx="4"/><rect x="216" y="216" width="14" height="84" rx="4"/><rect x="282" y="216" width="14" height="84" rx="4"/><rect x="326" y="216" width="14" height="84" rx="4"/><rect x="370" y="216" width="14" height="84" rx="4"/></g></g></g>
+    <g transform="rotate(-4 362 330)"><g clip-path="url(#p)"><rect x="96" y="196" width="320" height="124" rx="14" fill="#fff"/><rect x="80" y="318" width="352" height="22" rx="6" fill="#fff"/><g fill="#1f4e8c" opacity=".25"><rect x="128" y="216" width="14" height="84" rx="4"/><rect x="172" y="216" width="14" height="84" rx="4"/><rect x="216" y="216" width="14" height="84" rx="4"/><rect x="282" y="216" width="14" height="84" rx="4"/><rect x="326" y="216" width="14" height="84" rx="4"/><rect x="370" y="216" width="14" height="84" rx="4"/></g></g></g>
+    <g fill="#fff"><circle cx="150" cy="368" r="27"/><circle cx="210" cy="368" r="27"/><circle cx="302" cy="368" r="27"/><circle cx="362" cy="368" r="27"/></g>
+    <g fill="#1f4e8c"><circle cx="150" cy="368" r="10"/><circle cx="210" cy="368" r="10"/><circle cx="302" cy="368" r="10"/><circle cx="362" cy="368" r="10"/></g>
+  </g>
 </svg>

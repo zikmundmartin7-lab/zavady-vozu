@@ -77,20 +77,22 @@ create trigger profiles_protect
 
 -- ───────────────────────── Skupiny, vozy, závady ─────────────────────────
 
+-- name = odborný název (řady vozů), slang = jak se skupině říká; na jeden řádek „Faccpp – Choper“
 create table public.wagon_groups (
   id    smallint primary key,
   name  text not null unique,
-  sort  smallint not null
+  sort  smallint not null,
+  slang text
 );
 
-insert into public.wagon_groups (id, name, sort) values
-  (1, 'Chopry', 1),
-  (2, 'SA', 2),
-  (3, 'UA', 3),
-  (4, 'Vapy/Fals', 4),
-  (5, 'Trakce/Zetky', 5),
-  (6, 'Plošiňáky/Res/Smmp', 6),
-  (7, 'Ostatní', 7);
+insert into public.wagon_groups (id, name, slang, sort) values
+  (1, 'Faccpp', 'Choper', 1),
+  (2, 'Faccs', 'Sa', 2),
+  (3, 'Ua', null, 3),
+  (4, 'Fals', 'Vap', 4),
+  (5, 'Uk, Gbgs', 'Trakce', 5),
+  (6, 'Res, Smmp', 'Plošinové', 6),
+  (7, 'Ostatní', null, 7);
 
 create table public.wagons (
   id          uuid primary key default gen_random_uuid(),
@@ -257,7 +259,8 @@ select g.id, g.name, g.sort,
        count(d.id) filter (where d.resolved_at is null) as open_count,
        count(d.id) filter (where d.resolved_at is null
                              and d.created_by is distinct from me.id
-                             and d.created_at > coalesce(ws.seen_at, me.news_since)) as new_count
+                             and d.created_at > coalesce(ws.seen_at, me.news_since)) as new_count,
+       g.slang
 from public.wagon_groups g
 left join public.wagons w on w.group_id = g.id
 left join public.defects d on d.wagon_id = w.id
@@ -267,7 +270,7 @@ group by g.id;
 
 create view public.wagon_overview with (security_invoker = true) as
 select w.id, w.number, w.last4, w.group_id, w.note, w.created_at,
-       g.name as group_name,
+       concat_ws(' – ', g.name, g.slang) as group_name,
        count(d.id) filter (where d.resolved_at is null)     as open_count,
        coalesce(max(d.severity) filter (where d.resolved_at is null), 0) as max_severity,
        count(d.id) filter (where d.resolved_at is not null) as resolved_count,
@@ -280,7 +283,7 @@ join public.wagon_groups g on g.id = w.group_id
 left join public.defects d on d.wagon_id = w.id
 left join public.wagon_seen ws on ws.wagon_id = w.id and ws.user_id = (select auth.uid())
 left join public.profiles me on me.id = (select auth.uid())
-group by w.id, g.name;
+group by w.id, g.id;
 
 create view public.defect_feed with (security_invoker = true) as
 select d.*,

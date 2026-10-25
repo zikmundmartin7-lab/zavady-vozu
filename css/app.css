@@ -573,3 +573,8 @@ fieldset.field .check-row { margin: .45rem 0; color: var(--text); font-weight: 5
 /* Úprava, smazání, vrácení: vpravo a při zalomení řádku pohromadě */
 .defect-tools { display: inline-flex; gap: .25rem; margin-left: auto; }
 .defect-tools:empty { display: none; }
+
+/* Název skupiny: odborný nahoře, slangový pod ním */
+.group-slang { display: block; font-size: .78em; font-weight: 500; opacity: .75; line-height: 1.2; }
+.chip-btn .group-slang { font-size: .75em; }
+.chip-btn:has(.group-slang) { border-radius: 14px; padding: .35rem .9rem; line-height: 1.15; }
