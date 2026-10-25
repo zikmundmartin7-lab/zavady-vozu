@@ -63,8 +63,8 @@ export function GroupView({ id }) {
 
   return html`
     <${TopBar} back="#/" title=${g?.name ?? 'Skupina'}
-      sub=${g && [g.slang, g.open_count
-        ? plural(g.open_count, 'otevřená závada', 'otevřené závady', 'otevřených závad') : 'bez otevřených závad'].filter(Boolean).join(' · ')}>
+      sub=${g && html`${g.slang && html`<b>${g.slang}</b> · `}${g.open_count
+        ? plural(g.open_count, 'otevřená závada', 'otevřené závady', 'otevřených závad') : 'bez otevřených závad'}`}>
       <${NewBadge} n=${g?.new_count} class="badge-inline" />
       <${Badge} n=${g?.open_count} class="badge-inline" />
     <//>
