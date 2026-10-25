@@ -42,6 +42,9 @@ export function matchesQuery(number, q) {
 
 // ───── Role, oprávnění ─────
 
+// Základní heslo nového účtu (předvyplněné v registraci i při založení správcem); změnit ho jde, ale nemusí se
+export const DEFAULT_PASSWORD = '123456';
+
 export const ROLES = {
   pending: 'Čeká na schválení',
   user: 'Vozmistr',

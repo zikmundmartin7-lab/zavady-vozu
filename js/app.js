@@ -112,6 +112,17 @@ function App() {
     api.listProfiles().then((p) => setPendingUsers(p.filter((u) => u.role === 'pending').length), () => {});
   }, [me?.id, me?.role, version]);
 
+  // Účet se základním heslem: jednou na zařízení nabídnout (nepovinnou) změnu hesla
+  useEffect(() => {
+    if (!me?.temp_password || !can.use(me)) return;
+    const key = `zavady-temp-pw-tip:${me.id}`;
+    try {
+      if (localStorage.getItem(key)) return;
+      localStorage.setItem(key, '1');
+    } catch { return; }
+    toast('Přihlašujete se základním heslem. Pokud chcete, změňte si ho v Můj účet.', { title: 'Heslo', href: '#/ucet' });
+  }, [me?.id, me?.temp_password]);
+
   // Zápis bez signálu: čekající závady odeslat po spuštění, po návratu signálu, po návratu do aplikace
   // a pak každou minutu. Stahování na pozadí: po spuštění, po návratu signálu a po návratu do aplikace
   // (nejvýš jednou za 15 minut), ať je v telefonu vše potřebné i pro chvíle bez signálu.

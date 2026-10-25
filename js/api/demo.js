@@ -501,6 +501,26 @@ export const api = {
     audit(newTx(), 'profiles', 'update', old, p);
     commit();
   },
+  async createUser({ email, fullName, role, password }) {
+    if (!can.admin(me())) throw new Error('Účty zakládá jen správce.');
+    const mail = email.trim().toLowerCase();
+    if (!fullName.trim()) throw new Error('Vyplňte jméno a příjmení.');
+    if (password.length < 6) throw new Error('Heslo musí mít alespoň 6 znaků.');
+    if (state.profiles.some((p) => p.email.toLowerCase() === mail)) {
+      throw new Error('Účet s tímto e-mailem už existuje – najdete ho v seznamu uživatelů.');
+    }
+    // V demu se heslo nikde neověřuje (přihlašuje se výběrem uživatele), jen se zapamatuje příznak.
+    const p = { id: `u-${uid()}`, email: mail, full_name: fullName.trim(), role, temp_password: true };
+    state.profiles.push(p);
+    audit(newTx(), 'profiles', 'insert', null, p);
+    commit();
+    return { id: p.id };
+  },
+  async updatePassword(password) {
+    if (password.length < 6) throw new Error('Heslo musí mít alespoň 6 znaků.');
+    me().temp_password = false;
+    commit({ auth: true });
+  },
   async updateMyName(full_name) {
     me().full_name = full_name.trim();
     commit({ auth: true });

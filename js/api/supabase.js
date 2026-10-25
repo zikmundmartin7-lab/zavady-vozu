@@ -3,7 +3,7 @@
 
 import { SUPABASE_URL, SUPABASE_ANON_KEY, VAPID_PUBLIC_KEY } from '../config.js';
 import { IMAGE_NAME } from '../codes.js';
-import { compressImage, uid } from '../model.js';
+import { DEFAULT_PASSWORD, compressImage, uid } from '../model.js';
 
 // Knihovnu načítá už index.html (souběžně s ostatními soubory); tady jen záložně, kdyby chyběla.
 if (!window.supabase) {
@@ -31,6 +31,7 @@ const MESSAGES = [
   [/email not confirmed/i, 'E-mail ještě není potvrzený – klikněte na odkaz, který vám přišel.'],
   [/already registered/i, 'Účet s tímto e-mailem už existuje.'],
   [/password should be at least/i, 'Heslo musí mít alespoň 6 znaků.'],
+  [/should be different from the old/i, 'Nové heslo musí být jiné než současné.'],
   [/wagons_number_key/i, 'Vůz s tímto číslem už existuje.'],
   [/rate limit/i, 'Příliš mnoho pokusů, zkuste to za chvíli.'],
   [/failed to fetch|load failed|network/i, 'Chyba připojení k internetu.'],
@@ -123,10 +124,12 @@ export const api = {
 
   // Přihlášení
   async getProfile() {
-    const id = await currentUserId();
-    if (!id) return null;
-    const p = check(await sb.from('profiles').select('*').eq('id', id).maybeSingle());
-    return p ?? { id, email: '', full_name: '', role: 'pending' };
+    const { data } = await sb.auth.getSession();
+    const user = data.session?.user;
+    if (!user) return null;
+    const p = check(await sb.from('profiles').select('*').eq('id', user.id).maybeSingle());
+    // temp_password: účet založil správce (funkce create-user) a heslo zatím nikdo nezměnil
+    return { ...(p ?? { id: user.id, email: '', full_name: '', role: 'pending' }), temp_password: user.user_metadata?.temp_password === true };
   },
   onAuthChange(cb) {
     const { data } = sb.auth.onAuthStateChange((event) => setTimeout(() => cb(event), 0));
@@ -137,7 +140,7 @@ export const api = {
   },
   async signUp(email, password, fullName) {
     const r = check(await sb.auth.signUp({
-      email, password, options: { data: { full_name: fullName.trim() }, emailRedirectTo: appUrl() },
+      email, password, options: { data: { full_name: fullName.trim(), temp_password: password === DEFAULT_PASSWORD }, emailRedirectTo: appUrl() },
     }));
     // Správcům přijde upozornění, že nový uživatel čeká na schválení (jde jen s přihlášením hned po registraci)
     if (r.session) sb.functions.invoke('notify-new-defect', { body: { new_user: true } }).catch(() => {});
@@ -147,7 +150,7 @@ export const api = {
     check(await sb.auth.resetPasswordForEmail(email, { redirectTo: appUrl() }));
   },
   async updatePassword(password) {
-    check(await sb.auth.updateUser({ password }));
+    check(await sb.auth.updateUser({ password, data: { temp_password: false } }));
   },
   async signOut() {
     await api.push.disable().catch(() => {});
@@ -395,6 +398,19 @@ export const api = {
   },
   async setRole(id, role) {
     check(await sb.from('profiles').update({ role }).eq('id', id));
+  },
+  // Účet za kolegu s dočasným heslem (jen správce; účet je hned potvrzený a schválený).
+  // Kód je v supabase/functions/create-user, v Supabase je funkce nasazená pod názvem clever-task.
+  async createUser({ email, fullName, role, password }) {
+    const { data, error } = await sb.functions.invoke('clever-task', {
+      body: { email: email.trim(), full_name: fullName.trim(), role, password },
+    });
+    if (error) {
+      const detail = await error.context?.json?.().catch(() => null);
+      fail(new Error(detail?.error ?? (navigator.onLine
+        ? 'Funkce pro zakládání účtů neodpověděla – je nasazená v Supabase?' : 'Chyba připojení k internetu.')));
+    }
+    return data;
   },
   async updateMyName(full_name) {
     check(await sb.from('profiles').update({ full_name: full_name.trim() }).eq('id', await currentUserId()));

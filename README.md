@@ -19,6 +19,8 @@ Aplikace pro evidenci závad železničních vozů. Běží v prohlížeči na p
 - **Slabý signál:** po spuštění (a po návratu do aplikace, nejvýš jednou za 15 minut) se na pozadí stáhnou všechny skupiny, vozy, závady, komentáře k neopraveným závadám a fotky neopravených závad (`js/offline.js`). Obrazovky pak naskočí hned z paměti telefonu a ze sítě se jen obnoví. Fotky ukládá service worker (`zavady-foto`), při odhlášení se mažou.
 - **Obnovení stažením dolů:** na začátku stránky stáhnout prstem dolů – odešlou se čekající závady, stáhne se vše znovu a zkontroluje se nová verze aplikace.
 - **Upozornění na nového uživatele:** po registraci přijde správcům „Nový uživatel čeká na schválení“, klepnutí otevře Správu uživatelů.
+- **Základní heslo 123456** (`DEFAULT_PASSWORD` v `js/model.js`): předvyplněné při registraci i při založení účtu správcem, jde přepsat. Změna hesla je nepovinná: po prvním přihlášení se základním heslem se jednou nabídne, v Můj účet → **Změnit heslo** ji má každý (příznak `temp_password` v user_metadata).
+- **Účet založený správcem:** Správa uživatelů → **Založit účet** (jméno, e-mail, role, heslo). Účet je hned potvrzený i schválený, přihlašovací údaje se pošlou tlačítkem WhatsApp (Edge Function `create-user`).
 - **Oprávnění** hlídá přímo databáze:
 
 | Role | Co smí |
@@ -57,7 +59,8 @@ Data se ukládají v [Supabase](https://supabase.com): databázi, přihlašován
 2. Veřejný klíč vložte do `js/config.js` (`VAPID_PUBLIC_KEY`).
 3. V Supabase: Edge Functions → Secrets → přidejte `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` a `VAPID_SUBJECT` (`mailto:` + váš e-mail).
 4. Edge Functions → Deploy a new function → Via Editor → název **`notify-new-defect`** → vložte obsah `supabase/functions/notify-new-defect/index.ts` → Deploy. V nastavení funkce vypněte kontrolu JWT (funkce si přihlášení ověřuje sama).
-5. Každý uživatel si upozornění zapne v aplikaci: Můj účet → **Zapnout upozornění**. Tlačítkem **Poslat zkušební** si ověří, že chodí.
+5. Stejně nasaďte funkci pro zakládání účtů správcem (obsah `supabase/functions/create-user/index.ts`, kontrola JWT vypnutá). V tomto projektu běží pod názvem **`clever-task`** – při jiném názvu upravte `createUser` v `js/api/supabase.js`.
+6. Každý uživatel si upozornění zapne v aplikaci: Můj účet → **Zapnout upozornění**. Tlačítkem **Poslat zkušební** si ověří, že chodí.
 
 ## Instalace na Android
 
@@ -100,6 +103,7 @@ js/api/supabase.js | demo.js              ostrá data | ukázková data v prohl�
 js/ui.js, js/views/*.js                   obrazovky (Preact + htm, bez sestavování)
 supabase/schema.sql                       tabulky, oprávnění (RLS), úložiště
 supabase/functions/notify-new-defect/     rozesílání push upozornění
+supabase/functions/create-user/           správce zakládá účty s heslem (bez potvrzovacího e-mailu)
 supabase/oprava_*.sql, migrace_*.sql      jednorázové opravy a úpravy databáze
 server/                                   noční zálohy a pravidelné exporty na e-mail (služba na serveru)
 tools/katalog_vsp9.py                     převod katalogu závad z PDF přílohy 9 VSP (výstup do private/, mimo GitHub)
