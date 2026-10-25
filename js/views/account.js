@@ -2,7 +2,9 @@
 
 import { html, useEffect, useState } from '../../vendor/preact-htm.js';
 import { DEFAULT_PASSWORD, ROLES, can } from '../model.js';
-import { Empty, ErrorBox, Icon, Loading, TopBar, useApp, useLoad } from '../ui.js';
+import {
+  Empty, ErrorBox, Icon, Loading, TopBar, enablePush, isIos, isStandalone, setPushOff, useApp, useLoad,
+} from '../ui.js';
 
 function DemoLogin() {
   const { api } = useApp();
@@ -205,8 +207,8 @@ export function AccountView() {
   async function togglePush() {
     setBusy(true);
     try {
-      if (push === 'on') { await api.push.disable(); setPush('off'); toast('Upozornění vypnuta.'); }
-      else { await api.push.enable(); setPush('on'); toast('Upozornění zapnuta.'); }
+      if (push === 'on') { await api.push.disable(); setPushOff(me.id, true); setPush('off'); toast('Upozornění vypnuta.'); }
+      else { await enablePush(api, toast, me.id); setPush('on'); }
     } catch (err) {
       toast(err.message, { kind: 'error' });
     } finally {
@@ -239,9 +241,11 @@ export function AccountView() {
               ${push === 'on' && html`<button class="btn" disabled=${busy} onClick=${testPush}>Poslat zkušební</button>`}
             </div>
             ${api.mode === 'demo' && html`<p class="hint">V ukázkovém režimu chodí upozornění jen mezi kartami tohoto prohlížeče.</p>`}`
-          : html`<p class="muted">${api.mode === 'supabase'
-              ? 'Upozornění zatím nejsou nastavená (chybí VAPID klíč) nebo je tento prohlížeč nepodporuje.'
-              : 'Tento prohlížeč upozornění nepodporuje.'}</p>`}
+          : html`<p class="muted">${isIos() && !isStandalone()
+              ? 'Na iPhonu chodí upozornění jen do aplikace otevřené z ikony na ploše, ne ze Safari.'
+              : api.mode === 'supabase'
+                ? 'Upozornění zatím nejsou nastavená (chybí VAPID klíč) nebo je tento prohlížeč nepodporuje.'
+                : 'Tento prohlížeč upozornění nepodporuje.'}</p>`}
       </section>
 
       ${installPrompt && html`

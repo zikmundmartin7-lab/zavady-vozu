@@ -3,8 +3,8 @@
 import { html, useState } from '../../vendor/preact-htm.js';
 import { plural } from '../model.js';
 import {
-  Badge, BottomNav, Empty, ErrorBox, Fab, GroupName, Icon, Loading, NewBadge, OpenCount, OutboxBanner, TopBar, UserButton,
-  WagonNumber, WagonSearch, useApp, useLoad,
+  Badge, BottomNav, Empty, ErrorBox, Fab, GroupName, Icon, Loading, NewBadge, OpenCount, OutboxBanner, PushOffer, TopBar,
+  UserButton, WagonNumber, WagonSearch, useApp, useLoad,
 } from '../ui.js';
 
 export function HomeView() {
@@ -16,6 +16,7 @@ export function HomeView() {
     <${TopBar} title="Závady vozů"><${UserButton} /><//>
     <main class="page with-nav">
       <${OutboxBanner} />
+      <${PushOffer} />
       <${WagonSearch} onQuery=${setQ} />
       ${!q && html`
         <${ErrorBox} error=${groups.error} />

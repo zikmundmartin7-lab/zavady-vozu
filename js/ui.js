@@ -674,6 +674,100 @@ export function Toasts({ items, dismiss }) {
     </div>`;
 }
 
+// ───── Upozornění: nabídka po přihlášení, zapnutí se zkušebním upozorněním ─────
+
+const flag = (key) => { try { return !!localStorage.getItem(key); } catch { return false; } };
+const setFlag = (key, on) => {
+  try { if (on) localStorage.setItem(key, '1'); else localStorage.removeItem(key); } catch { /* nevadí */ }
+};
+// Ručně vypnutá upozornění (Můj účet) se sama znovu nezapínají ani nenabízejí
+export const isPushOff = (userId) => flag(`zavady-push-off:${userId}`);
+export const setPushOff = (userId, on) => setFlag(`zavady-push-off:${userId}`, on);
+
+// iPhone/iPad (iPad se hlásí jako Mac s dotykovým displejem) a aplikace spuštěná z ikony na ploše
+export const isIos = () => !/Android/.test(navigator.userAgent)
+  && (/iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+export const isStandalone = () => navigator.standalone || matchMedia('(display-mode: standalone)').matches;
+
+/** Zapnout upozornění (telefon se zeptá) a hned poslat zkušební, ať je vidět, že chodí. */
+export async function enablePush(api, toast, userId) {
+  await api.push.enable();
+  setPushOff(userId, false);
+  try {
+    await api.push.test();
+    toast('Upozornění zapnuta. Za pár sekund přijde zkušební upozornění.');
+  } catch (e) {
+    toast(`Upozornění jsou zapnutá, zkušební se ale nepodařilo poslat: ${e.message}`, { kind: 'error' });
+  }
+}
+
+/** Karta na úvodní obrazovce: zapnutí upozornění jedním klepnutím (+ Povolit v telefonu). */
+export function PushOffer() {
+  const { api, me, toast } = useApp();
+  const [state, setState] = useState(null); // null = nic | 'offer' | 'denied' | 'ios-safari'
+  const [busy, setBusy] = useState(false);
+  const hiddenKey = `zavady-push-offer-hidden:${me.id}`;
+
+  useEffect(() => {
+    let alive = true;
+    const check = async () => {
+      let next = null;
+      if (flag(hiddenKey) || isPushOff(me.id)) next = null;
+      else if (isIos() && !isStandalone()) next = 'ios-safari';
+      else if (api.push.supported() && (await api.push.status().catch(() => 'off')) !== 'on') {
+        // už povolené (třeba po novém přihlášení) → zapnout bez ptaní; jinak nabídnout
+        if (api.push.permission() === 'denied') next = 'denied';
+        else if ((await api.push.resume().catch(() => 'off')) !== 'on') next = 'offer';
+      }
+      if (alive) setState(next);
+    };
+    check();
+    // po návratu z nastavení telefonu (povolení upozornění) se karta sama aktualizuje
+    const onVisible = () => document.visibilityState === 'visible' && check();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { alive = false; document.removeEventListener('visibilitychange', onVisible); };
+  }, [me.id]);
+
+  if (!state) return null;
+  const hide = () => { setFlag(hiddenKey, true); setState(null); };
+  async function enable() {
+    setBusy(true);
+    try {
+      await enablePush(api, toast, me.id);
+      setState(null);
+    } catch (e) {
+      if (api.push.permission() === 'denied') setState('denied');
+      else toast(e.message, { kind: 'error' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return html`
+    <section class="card push-offer">
+      <h2><${Icon} name="bell" /> Upozornění na nové závady</h2>
+      ${state === 'offer' && html`
+        <p>Když někdo zapíše novou závadu, přijde vám upozornění i při zavřené aplikaci.</p>
+        <div class="row">
+          <button class="btn btn-primary" disabled=${busy} onClick=${enable}>${busy ? 'Zapínám…' : 'Zapnout'}</button>
+          <button class="btn" onClick=${hide}>Teď ne</button>
+        </div>
+        <p class="hint">Telefon se pak zeptá – klepněte na <b>Povolit</b>.</p>`}
+      ${state === 'denied' && html`
+        <p>Upozornění jsou v telefonu zakázaná. Povolíte je v nastavení telefonu:</p>
+        <p><b>${isIos()
+          ? 'Nastavení → Oznámení → Závady vozů → Povolit oznámení'
+          : 'Nastavení → Aplikace → Závady vozů (případně Chrome) → Oznámení'}</b></p>
+        <button class="btn" onClick=${hide}>Rozumím</button>`}
+      ${state === 'ios-safari' && html`
+        <p>Na iPhonu chodí upozornění jen do aplikace otevřené <b>z ikony na ploše</b>, ne ze Safari.</p>
+        <div class="row">
+          <a class="btn btn-primary" href="navod.html">Jak přidat na plochu</a>
+          <button class="btn" onClick=${hide}>Teď ne</button>
+        </div>`}
+    </section>`;
+}
+
 // ───── Zápis bez signálu: banner s frontou závad čekajících na odeslání ─────
 
 export function useOutbox() {

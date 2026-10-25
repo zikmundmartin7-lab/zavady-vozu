@@ -52,6 +52,16 @@ async function currentUserId() {
   return data.session?.user.id ?? null;
 }
 
+// Odběr upozornění v tomto telefonu (povolení už musí být udělené) → uložit k přihlášenému uživateli
+async function subscribePush() {
+  const reg = await navigator.serviceWorker.ready;
+  const sub = (await reg.pushManager.getSubscription())
+    ?? await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64UrlToBytes(VAPID_PUBLIC_KEY) });
+  check(await sb.from('push_subscriptions').upsert({
+    endpoint: sub.endpoint, subscription: sub.toJSON(), user_id: await currentUserId(),
+  }));
+}
+
 // Podepsané odkazy na soubory (platí hodinu); po částech, ať dotaz nepřeroste
 async function signedUrls(paths) {
   const urls = new Map();
@@ -424,15 +434,19 @@ export const api = {
       const reg = await navigator.serviceWorker.ready;
       return (await reg.pushManager.getSubscription()) ? 'on' : 'off';
     },
+    // 'default' (ještě se neptal) | 'granted' | 'denied' | 'unsupported'
+    permission: () => (typeof Notification === 'undefined' ? 'unsupported' : Notification.permission),
     async enable() {
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') throw new Error('Upozornění nejsou povolená v nastavení prohlížeče.');
-      const reg = await navigator.serviceWorker.ready;
-      const sub = (await reg.pushManager.getSubscription())
-        ?? await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64UrlToBytes(VAPID_PUBLIC_KEY) });
-      check(await sb.from('push_subscriptions').upsert({
-        endpoint: sub.endpoint, subscription: sub.toJSON(), user_id: await currentUserId(),
-      }));
+      await subscribePush();
+    },
+    // Bez ptaní: telefon upozornění už dřív povolil (nové přihlášení, přeinstalace) → odběr obnovit
+    // a přiřadit přihlášenému uživateli. Vrací 'on' / 'off'.
+    async resume() {
+      if (!api.push.supported() || api.push.permission() !== 'granted') return 'off';
+      await subscribePush();
+      return 'on';
     },
     async test() {
       const { data, error } = await sb.functions.invoke('notify-new-defect', { body: { test: true } });

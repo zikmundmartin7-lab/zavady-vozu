@@ -60,7 +60,7 @@ Data se ukládají v [Supabase](https://supabase.com): databázi, přihlašován
 3. V Supabase: Edge Functions → Secrets → přidejte `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` a `VAPID_SUBJECT` (`mailto:` + váš e-mail).
 4. Edge Functions → Deploy a new function → Via Editor → název **`notify-new-defect`** → vložte obsah `supabase/functions/notify-new-defect/index.ts` → Deploy. V nastavení funkce vypněte kontrolu JWT (funkce si přihlášení ověřuje sama).
 5. Stejně nasaďte funkci pro zakládání účtů správcem (obsah `supabase/functions/create-user/index.ts`, kontrola JWT vypnutá). V tomto projektu běží pod názvem **`clever-task`** – při jiném názvu upravte `createUser` v `js/api/supabase.js`.
-6. Každý uživatel si upozornění zapne v aplikaci: Můj účet → **Zapnout upozornění**. Tlačítkem **Poslat zkušební** si ověří, že chodí.
+6. Po přihlášení aplikace na úvodní obrazovce sama nabídne **Zapnout** (karta `PushOffer` v `js/ui.js`); po povolení hned přijde zkušební upozornění. Odmítnutou nabídku jde dohnat v Můj účet → **Zapnout upozornění**. Když telefon upozornění už dřív povolil (nové přihlášení, přeinstalace), zapnou se samy bez ptaní – kromě ručně vypnutých v Můj účet. Na iPhonu v Safari karta místo zapnutí odkáže na přidání na plochu.
 
 ## Instalace na Android
 

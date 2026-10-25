@@ -578,3 +578,7 @@ fieldset.field .check-row { margin: .45rem 0; color: var(--text); font-weight: 5
 .group-slang { display: block; font-size: .78em; font-weight: 700; opacity: .8; line-height: 1.2; }
 .chip-btn .group-slang { font-size: .75em; }
 .chip-btn:has(.group-slang) { border-radius: 14px; padding: .35rem .9rem; line-height: 1.15; }
+
+/* Nabídka upozornění na úvodní obrazovce */
+.push-offer { margin-bottom: 14px; border-left: 5px solid var(--primary); }
+.push-offer p { margin: .3rem 0 .6rem; }

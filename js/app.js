@@ -3,7 +3,7 @@
 import { html, render, useCallback, useEffect, useState } from '../vendor/preact-htm.js';
 import { api } from './api/index.js';
 import { can, formatNumber } from './model.js';
-import { AppCtx, Lightbox, Loading, PullToRefresh, ShareDialog, Toasts, clearLocalCache } from './ui.js';
+import { AppCtx, Lightbox, Loading, PullToRefresh, ShareDialog, Toasts, clearLocalCache, isPushOff } from './ui.js';
 import { lastPrefetchAt, prefetchAll } from './offline.js';
 import { AccountView, LoginView, PendingView, RecoveryView, UsersView } from './views/account.js';
 import { DefectView } from './views/defect.js';
@@ -111,6 +111,13 @@ function App() {
     if (!can.admin(me)) { setPendingUsers(0); return; }
     api.listProfiles().then((p) => setPendingUsers(p.filter((u) => u.role === 'pending').length), () => {});
   }, [me?.id, me?.role, version]);
+
+  // Upozornění: když je telefon už dřív povolil (nové přihlášení, přeinstalace), obnovit je bez ptaní.
+  // Ručně vypnutá (Můj účet) ne.
+  useEffect(() => {
+    if (!can.use(me) || !navigator.onLine || isPushOff(me.id)) return;
+    api.push.resume().catch(() => {});
+  }, [me?.id, me?.role]);
 
   // Účet se základním heslem: jednou na zařízení nabídnout (nepovinnou) změnu hesla
   useEffect(() => {

@@ -530,6 +530,8 @@ export const api = {
   push: {
     supported: () => 'Notification' in window,
     async status() { return 'Notification' in window && Notification.permission === 'granted' ? 'on' : 'off'; },
+    permission: () => (typeof Notification === 'undefined' ? 'unsupported' : Notification.permission),
+    async resume() { return api.push.status(); },
     async enable() {
       const p = await Notification.requestPermission();
       if (p !== 'granted') throw new Error('Upozornění nejsou povolená v nastavení prohlížeče.');
