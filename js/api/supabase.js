@@ -87,8 +87,27 @@ async function withUrls(defects) {
   return attachUrls(defects, atts, await signedUrls(atts.map((a) => a.path)));
 }
 
-// Řádek přehledu závad: závada + číslo vozu, skupina a počet příloh
-function overviewRows(defects, wagons, groups, atts) {
+// Kdy uživatel naposledy otevřel který vůz (tabulka wagon_seen) a od kdy se mu počítají nové závady.
+// Bez toho (chyba, starší databáze) se v přehledu nové závady jen nezvýrazní.
+async function seenInfo() {
+  try {
+    const id = await currentUserId();
+    const [p, seen] = await Promise.all([
+      sb.from('profiles').select('news_since').eq('id', id).maybeSingle().then(check),
+      fetchAll(() => sb.from('wagon_seen').select('wagon_id, seen_at').order('wagon_id')),
+    ]);
+    return { me: id, since: p?.news_since, at: new Map(seen.map((s) => [s.wagon_id, s.seen_at])) };
+  } catch {
+    return null;
+  }
+}
+
+// Nová závada = neopravená od někoho jiného, vložená od poslední návštěvy vozu (jako group_overview.new_count)
+const isNewFor = (d, seen) => !!seen && !d.resolved_at && d.created_by !== seen.me
+  && Date.parse(d.created_at) > Date.parse(seen.at.get(d.wagon_id) ?? seen.since);
+
+// Řádek přehledu závad: závada + číslo vozu, skupina, počet příloh a jestli je pro uživatele nová
+function overviewRows(defects, wagons, groups, atts, seen) {
   const wagonMap = new Map(wagons.map((w) => [w.id, w]));
   const groupMap = new Map(groups.map((g) => [g.id, groupLabel(g)]));
   const attCount = new Map();
@@ -96,7 +115,7 @@ function overviewRows(defects, wagons, groups, atts) {
   return defects.map(({ attachments, ...d }) => {
     const w = wagonMap.get(d.wagon_id);
     return { ...d, number: w?.number ?? '', group_id: w?.group_id, group_name: groupMap.get(w?.group_id) ?? '',
-      attachment_count: attCount.get(d.id) ?? 0 };
+      attachment_count: attCount.get(d.id) ?? 0, is_new: isNewFor(d, seen) };
   });
 }
 
@@ -310,23 +329,25 @@ export const api = {
       if (status === 'resolved') q = q.not('resolved_at', 'is', null);
       return q.order('found_at', { ascending: false }).order('id');
     };
-    const [rows, wagons, groups, atts] = await Promise.all([
+    const [rows, wagons, groups, atts, seen] = await Promise.all([
       fetchAll(defects),
       fetchAll(() => sb.from('wagons').select('id, number, group_id').order('id')),
       api.listGroups(),
       fetchAll(() => sb.from('attachments').select('defect_id').order('id')),
+      seenInfo(),
     ]);
-    return overviewRows(rows, wagons, groups, atts);
+    return overviewRows(rows, wagons, groups, atts, seen);
   },
 
   // Všechna data najednou pro stahování na pozadí (offline.js): skupiny, vozy, závady s odkazy na fotky,
   // komentáře k neopraveným závadám a řádky přehledu
   async snapshot() {
-    const [groups, wagons, defects, atts] = await Promise.all([
+    const [groups, wagons, defects, atts, seen] = await Promise.all([
       api.listGroups(),
       fetchAll(() => sb.from('wagon_overview').select('*').order('id')),
       fetchAll(() => sb.from('defect_feed').select('*').order('id')),
       fetchAll(() => sb.from('attachments').select('*').order('created_at').order('id')),
+      seenInfo(),
     ]);
     const withAtt = attachUrls(defects, atts, await signedUrls(atts.map((a) => a.path)));
     const openIds = defects.filter((d) => !d.resolved_at).map((d) => d.id);
@@ -336,7 +357,7 @@ export const api = {
       comments.push(...await fetchAll(() => sb.from('comment_feed').select('*').in('defect_id', part)
         .order('created_at').order('id')));
     }
-    return { groups, wagons, defects: withAtt, comments, overview: overviewRows(defects, wagons, groups, atts) };
+    return { groups, wagons, defects: withAtt, comments, overview: overviewRows(defects, wagons, groups, atts, seen) };
   },
 
   // Historie změn a koš (tabulka audit_log, plní ji databáze sama)

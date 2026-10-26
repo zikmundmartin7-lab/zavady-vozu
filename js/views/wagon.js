@@ -7,7 +7,7 @@ import {
 } from '../ui.js';
 
 export function WagonView({ id }) {
-  const { api, me, refresh, toast, version } = useApp();
+  const { api, me, refresh, toast, version, wagonSeen } = useApp();
   const wagon = useLoad(() => api.getWagon(id), [id], `wagon:${id}`);
   const defects = useLoad(() => api.listDefects(id), [id], `defects:${id}`);
   const groups = useLoad(() => api.listGroups(), [], 'groups');
@@ -16,10 +16,12 @@ export function WagonView({ id }) {
 
   // Otevřením vozu jsou jeho závady prohlédnuté. Štítek „Nová“ dostanou ty vložené od minulé návštěvy;
   // při živé změně (nová závada, zatímco je vůz otevřený) se vůz označí jako prohlédnutý znovu.
+  // wagonSeen: odznak u záložky Přehled se přepočítá a v přehledu přestanou být závady vozu tučně.
   const [seenBefore, setSeenBefore] = useState(null);
   const firstVisit = useRef(true);
   useEffect(() => {
     api.markWagonSeen(id).then((prev) => {
+      wagonSeen(id);
       if (firstVisit.current) { firstVisit.current = false; setSeenBefore(prev); }
     }, () => {});
   }, [id, version]);

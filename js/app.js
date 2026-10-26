@@ -3,7 +3,9 @@
 import { html, render, useCallback, useEffect, useState } from '../vendor/preact-htm.js';
 import { api } from './api/index.js';
 import { can, formatNumber } from './model.js';
-import { AppCtx, Lightbox, Loading, PullToRefresh, ShareDialog, Toasts, clearLocalCache, isPushOff } from './ui.js';
+import {
+  AppCtx, Lightbox, Loading, PullToRefresh, ShareDialog, Toasts, clearLocalCache, isPushOff, readCached, writeCached,
+} from './ui.js';
 import { lastPrefetchAt, prefetchAll } from './offline.js';
 import { AccountView, LoginView, PendingView, RecoveryView, UsersView } from './views/account.js';
 import { DefectView } from './views/defect.js';
@@ -68,6 +70,9 @@ function Page({ route }) {
 
 let toastSeq = 0;
 
+// Nové závady od ostatních ve všech skupinách (součet group_overview.new_count)
+const countNew = (groups) => (groups ?? []).reduce((n, g) => n + (g.new_count ?? 0), 0);
+
 function App() {
   const route = useRoute();
   // Poslední přihlášený uživatel z paměti telefonu → aplikace se ukáže hned, ověření proběhne na pozadí
@@ -80,6 +85,8 @@ function App() {
   const [installPrompt, setInstallPrompt] = useState(null);
   const [tabReset, setTabReset] = useState(0);
   const [pendingUsers, setPendingUsers] = useState(0);
+  const [newDefects, setNewDefects] = useState(() => countNew(readCached(api.mode, 'groups')));
+  const [seenWagons, setSeenWagons] = useState(() => new Map()); // vůz → kdy ho uživatel otevřel (v této relaci)
 
   const reloadMe = () => api.getProfile().then(
     (p) => { setMe(p); saveMe(p); },
@@ -111,6 +118,13 @@ function App() {
     if (!can.admin(me)) { setPendingUsers(0); return; }
     api.listProfiles().then((p) => setPendingUsers(p.filter((u) => u.role === 'pending').length), () => {});
   }, [me?.id, me?.role, version]);
+
+  // Počet nových závad pro modrý odznak u záložky Přehled; přepočítá se i po otevření vozu
+  // (otevřením jsou jeho závady přečtené)
+  useEffect(() => {
+    if (!can.use(me)) { setNewDefects(0); return; }
+    api.listGroups().then((g) => { writeCached(api.mode, 'groups', g); setNewDefects(countNew(g)); }, () => {});
+  }, [me?.id, me?.role, version, seenWagons]);
 
   // Upozornění: když je telefon už dřív povolil (nové přihlášení, přeinstalace), obnovit je bez ptaní.
   // Ručně vypnutá (Můj účet) ne.
@@ -201,7 +215,8 @@ function App() {
     openMedia: (items, index) => setMedia({ items, index }),
     share: (id, opts = {}) => setSharing({ id, ...opts }),
     resetTab: () => { setTabReset((n) => n + 1); scrollTo(0, 0); },
-    pendingUsers,
+    pendingUsers, newDefects, seenWagons,
+    wagonSeen: (id) => setSeenWagons((m) => new Map(m).set(id, Date.now())),
   };
 
   let content;

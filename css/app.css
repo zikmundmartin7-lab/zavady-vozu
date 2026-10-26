@@ -506,6 +506,9 @@ button.code-item:hover { border-color: var(--primary); }
 .overview-row.resolved { border-left-color: var(--ok); }
 .overview-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .overview-text { margin: .3rem 0 .2rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+/* Nepřečtená závada (nová od ostatních, vůz ještě neotevřený): tučně, po otevření vozu jako ostatní */
+.overview-row.unread { font-weight: 700; }
+.unread-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--primary); flex: none; }
 
 /* ───── Zápis bez signálu ───── */
 
@@ -540,6 +543,15 @@ button.code-item:hover { border-color: var(--primary); }
 .new-badge.badge-inline { box-shadow: 0 0 0 2px rgba(255, 255, 255, .7); margin-right: 6px; }
 .new-badge.small { height: 22px; padding: 0 8px; font-size: .75rem; box-shadow: none; }
 .chip-new { background: var(--primary); color: #fff; }
+/* Odznak u záložky Přehled: počet nových závad */
+.nav-icon { position: relative; display: inline-flex; }
+.nav-badge {
+  position: absolute; top: -6px; left: calc(100% - 9px);
+  min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px;
+  display: inline-grid; place-items: center;
+  background: var(--primary); color: #fff; font-size: .72rem; font-weight: 700; line-height: 1;
+  box-shadow: 0 0 0 2px var(--surface);
+}
 
 /* ───── Okno pro sdílení (WhatsApp) ───── */
 
