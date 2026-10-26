@@ -1,6 +1,6 @@
 // Service worker: rychlé spuštění z paměti telefonu, offline záloha a push upozornění na nové závady.
 
-const CACHE = 'zavady-v26';
+const CACHE = 'zavady-v27';
 const PHOTO_CACHE = 'zavady-foto'; // fotky závad a obrázky katalogu (přežije novou verzi aplikace)
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
@@ -56,6 +56,21 @@ self.addEventListener('fetch', (e) => {
     return;
   }
   if (url.origin !== location.origin) return;
+  // Návod k instalaci: vždy nejdřív ze sítě (ověří se i proti paměti prohlížeče), ať je hned vidět nová verze;
+  // bez signálu z paměti telefonu. Otevírá se zřídka a skoro vždy se signálem, rychlý start tu nehraje roli.
+  if (url.pathname.endsWith('/navod.html')) {
+    e.respondWith((async () => {
+      const cache = await caches.open(CACHE);
+      try {
+        const res = await fetch(url.href, { cache: 'no-cache' });
+        if (res.ok) cache.put(e.request, res.clone());
+        return res;
+      } catch {
+        return (await cache.match(e.request)) ?? Response.error();
+      }
+    })());
+    return;
+  }
   e.respondWith((async () => {
     const cache = await caches.open(CACHE);
     const cached = await cache.match(e.request);
