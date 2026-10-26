@@ -224,9 +224,16 @@ export function TopBar({ title, back, children, sub }) {
 export const Fab = ({ href, label = 'Nová závada' }) => html`
   <a class="fab" href=${href}><${Icon} name="plus" size=${22} /> ${label}</a>`;
 
+// Vpravo v horní liště: nové komentáře (bublina s červeným počtem) a účet
 export function UserButton() {
-  const { me, pendingUsers: pending } = useApp();
+  const { me, pendingUsers: pending, commentInbox } = useApp();
+  const unread = (commentInbox ?? []).reduce((n, r) => n + r.unread, 0);
   return html`
+    <a class="icon-btn topbar-comments" href="#/komentare"
+      aria-label=${unread ? plural(unread, 'nový komentář', 'nové komentáře', 'nových komentářů') : 'Komentáře'}>
+      <${Icon} name="chat" size=${24} />
+      ${unread > 0 && html`<span class="nav-badge">${unread > 99 ? '99+' : unread}</span>`}
+    </a>
     <a class="avatar" href="#/ucet" aria-label="Můj účet" title=${me?.full_name}>
       ${(me?.full_name || '?').split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase()}
       ${pending > 0 && html`<span class="dot" title="Noví uživatelé čekají na schválení"></span>`}
@@ -317,7 +324,8 @@ export function WagonSearch({ groupId, onQuery }) {
 // ───── Karta závady ─────
 
 export function DefectCard({ d, wagon = null, showComments = true, isNew = false }) {
-  const { api, me, refresh, toast, openMedia, share } = useApp();
+  const { api, me, refresh, toast, openMedia, share, commentInbox } = useApp();
+  const unreadComments = commentInbox?.find((r) => r.defect_id === d.id)?.unread ?? 0;
   const [resolving, setResolving] = useState(false);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
@@ -400,7 +408,8 @@ export function DefectCard({ d, wagon = null, showComments = true, isNew = false
       <div class="defect-actions">
         ${showComments && html`
           <a class="btn btn-ghost" href="#/zavada/${d.id}"><${Icon} name="chat" size=${18} />
-            ${d.comment_count ? plural(d.comment_count, 'komentář', 'komentáře', 'komentářů') : 'Komentovat'}</a>`}
+            ${d.comment_count ? plural(d.comment_count, 'komentář', 'komentáře', 'komentářů') : 'Komentovat'}
+            ${unreadComments > 0 && html`<span class="new-badge small">${plural(unreadComments, 'nový', 'nové', 'nových')}</span>`}</a>`}
         <button class="btn btn-whatsapp" title="Poslat do WhatsAppu" aria-label="Poslat závadu do WhatsAppu"
           onClick=${() => quickShare({
             d, w: wagon, catalog, openDialog: (prepared) => share(d.id, { prepared }), onShared: () => praise(toast),

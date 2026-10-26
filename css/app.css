@@ -544,6 +544,12 @@ button.code-item:hover { border-color: var(--primary); }
 .new-badge.badge-inline { box-shadow: 0 0 0 2px rgba(255, 255, 255, .7); margin-right: 6px; }
 .new-badge.small { height: 22px; padding: 0 8px; font-size: .75rem; box-shadow: none; }
 .chip-new { background: var(--badge); color: #fff; }
+/* Nové komentáře: bublina v horní liště s počtem, řádky seznamu */
+.topbar .icon-btn.topbar-comments { position: relative; margin-left: 0; }
+.topbar-comments .nav-badge { top: 2px; left: auto; right: -2px; box-shadow: 0 0 0 2px var(--primary); }
+.inbox-row { border-left-color: var(--badge); }
+.inbox-defect { margin-top: .2rem; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+.defect-actions .new-badge { margin-left: .3rem; }
 /* Odznak u záložky Přehled: počet nových závad */
 .nav-icon { position: relative; display: inline-flex; }
 .nav-badge {
