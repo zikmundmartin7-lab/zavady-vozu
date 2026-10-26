@@ -238,21 +238,35 @@ function App() {
   }, []);
 
   // Živé změny z databáze → překreslit; nová závada od někoho jiného → upozornění v aplikaci.
+  // Nový komentář → upozornění autorovi závady a těm, kdo ji už komentovali (ne na otevřené závadě).
   useEffect(() => {
     if (!can.use(me)) return undefined;
-    return api.subscribeChanges(async ({ newDefect }) => {
+    // V demu neexistuje server, který by posílal push – upozornění ukáže přímo prohlížeč.
+    const demoNotify = async (title, body, url, tag) => {
+      if (api.mode !== 'demo' || !document.hidden || window.Notification?.permission !== 'granted') return;
+      const reg = await navigator.serviceWorker?.getRegistration();
+      reg?.showNotification(title, { body, icon: 'icons/icon-192.png?v=2', badge: 'icons/badge-96.png?v=2', data: { url }, tag });
+    };
+    return api.subscribeChanges(async ({ newDefect, newComment }) => {
       refresh();
-      if (!newDefect) return;
-      const w = await api.getWagon(newDefect.wagon_id).catch(() => null);
-      const title = `Nová závada${w ? ` · ${formatNumber(w.number)}` : ''}`;
-      toast(newDefect.description, { title, href: `#/vuz/${newDefect.wagon_id}` });
-      // V demu neexistuje server, který by posílal push – upozornění ukáže přímo prohlížeč.
-      if (api.mode === 'demo' && document.hidden && window.Notification?.permission === 'granted') {
-        const reg = await navigator.serviceWorker?.getRegistration();
-        reg?.showNotification(title, {
-          body: newDefect.description, icon: 'icons/icon-192.png?v=2', badge: 'icons/badge-96.png?v=2',
-          data: { url: `#/vuz/${newDefect.wagon_id}` }, tag: newDefect.id,
-        });
+      if (newDefect) {
+        const w = await api.getWagon(newDefect.wagon_id).catch(() => null);
+        const title = `Nová závada${w ? ` · ${formatNumber(w.number)}` : ''}`;
+        toast(newDefect.description, { title, href: `#/vuz/${newDefect.wagon_id}` });
+        demoNotify(title, newDefect.description, `#/vuz/${newDefect.wagon_id}`, newDefect.id);
+      }
+      if (newComment && location.hash !== `#/zavada/${newComment.defect_id}`) {
+        const [d, comments] = await Promise.all([
+          api.getDefect(newComment.defect_id).catch(() => null), api.listComments(newComment.defect_id).catch(() => []),
+        ]);
+        const mine = d?.created_by === me.id || comments.some((c) => c.author_id === me.id && c.id !== newComment.id);
+        if (!mine) return;
+        const w = await api.getWagon(d.wagon_id).catch(() => null);
+        const author = comments.find((c) => c.id === newComment.id)?.author_name || 'Někdo';
+        const title = `Nový komentář${w ? ` · ${formatNumber(w.number)}` : ''}`;
+        const url = `#/zavada/${newComment.defect_id}`;
+        toast(`${author}: ${newComment.body}`, { title, href: url });
+        demoNotify(title, `${author}: ${newComment.body}`, url, `comment-${newComment.id}`);
       }
     });
   }, [me?.id, me?.role]);
