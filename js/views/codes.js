@@ -1,8 +1,10 @@
 // Kódy závad podle přílohy 9 VSP: záložka s hledáním v katalogu a pole pro kód ve formuláři závady.
 
 import { html, useEffect, useMemo, useRef, useState } from '../../vendor/preact-htm.js';
-import { IMAGE_NAME, codeOf, highlightTokens, imagesFor, searchCodes, typeCode } from '../codes.js';
-import { can } from '../model.js';
+import {
+  IMAGE_NAME, catalogPathTo, catalogTree, codeOf, highlightTokens, imagesFor, searchCodes, typeCode,
+} from '../codes.js';
+import { can, plural } from '../model.js';
 import {
   BottomNav, Empty, Highlight, Icon, Loading, TopBar, UserButton, useApp, useCatalog, useCodeImages,
 } from '../ui.js';
@@ -44,12 +46,16 @@ export function CodeItem({ c, tokens = [], onPick, picked, images }) {
   return html`<button type="button" class="code-item ${picked ? 'picked' : ''}" onClick=${() => onPick(c.kod)}>${body}</button>`;
 }
 
+// Popis pole je vlastní text místo placeholderu: placeholder má jen jeden řádek a v telefonu by se uřízl
 function CodeTextSearch({ value, onInput, placeholder }) {
   return html`
     <label class="search-box">
       <${Icon} name="search" />
-      <input type="search" autocomplete="off" enterkeyhint="search" placeholder=${placeholder}
-        value=${value} onInput=${(e) => onInput(e.currentTarget.value)} />
+      <span class="search-field">
+        <input type="search" autocomplete="off" enterkeyhint="search" aria-label=${placeholder}
+          value=${value} onInput=${(e) => onInput(e.currentTarget.value)} />
+        ${!value && html`<span class="search-placeholder" aria-hidden="true">${placeholder}</span>`}
+      </span>
       ${value && html`<button type="button" class="icon-btn small" onClick=${(e) => { e.preventDefault(); onInput(''); }}
         aria-label="Vymazat"><${Icon} name="x" size=${18} /></button>`}
     </label>`;
@@ -163,11 +169,118 @@ function CodesSearchView() {
     <${BottomNav} active="kody" />`;
 }
 
+// ───── Výběr kódu procházením katalogu (okno ve formuláři závady) ─────
+
+// Konstrukční část bez úvodu, který je už vidět u nadřazeného kódu („Pojezd › Kolo“ → „Kolo“)
+function relativePath(c, parent) {
+  const base = parent?.cesta;
+  if (!base) return c.cesta;
+  if (c.cesta === base) return '';
+  return c.cesta.startsWith(`${base} › `) ? c.cesta.slice(base.length + 3) : c.cesta;
+}
+
+// Kód s podřízenými kódy: klepnutí otevře další úroveň
+function CatalogNode({ c, parent, count, picked, onOpen }) {
+  const path = relativePath(c, parent);
+  const text = [c.kontext, c.popis].filter(Boolean).join(' ').replace(/\s+/g, ' ');
+  return html`
+    <button type="button" class="catalog-node ${picked ? 'picked' : ''}" onClick=${() => onOpen(c.kod)}>
+      <span class="catalog-node-main">
+        <span class="code-item-head">
+          <span class="code-no">${c.kod}</span>
+          ${path && html`<span class="code-path">${path}</span>`}
+        </span>
+        ${text && html`<span class="catalog-node-text">${text}</span>`}
+      </span>
+      <span class="catalog-node-count">${plural(count, 'kód', 'kódy', 'kódů')}<${Icon} name="right" size=${18} /></span>
+    </button>`;
+}
+
+/**
+ * Katalog po úrovních: části katalogu → podrobnější kódy → konkrétní závada; klepnutím na závadu se vybere.
+ * Každý krok je záznam v historii se stejnou adresou, takže tlačítko Zpět v telefonu vrací o krok
+ * a nakonec zavře katalog – formulář s rozepsanou závadou zůstane.
+ */
+function CatalogDialog({ catalog, images, value, onPick, onClose }) {
+  const [path, setPath] = useState(() => (catalog?.length ? catalogPathTo(catalog, value) : []));
+  const bodyRef = useRef();
+
+  useEffect(() => {
+    history.pushState({ katalog: path, krok: 0 }, '');
+    const onPop = (e) => (e.state?.katalog ? setPath(e.state.katalog) : onClose());
+    const onKey = (e) => e.key === 'Escape' && close();
+    addEventListener('popstate', onPop);
+    addEventListener('keydown', onKey);
+    return () => { removeEventListener('popstate', onPop); removeEventListener('keydown', onKey); };
+  }, []);
+  useEffect(() => { if (bodyRef.current) bodyRef.current.scrollTop = 0; }, [path.join('|')]);
+
+  function open(next) {
+    history.pushState({ katalog: next, krok: (history.state?.krok ?? 0) + 1 }, '');
+    setPath(next);
+  }
+  // Zavřít a vrátit historii tam, kde byla před otevřením katalogu
+  function close() {
+    const krok = history.state?.krok;
+    onClose();
+    if (krok !== undefined) history.go(-(krok + 1));
+  }
+  function pick(kod) {
+    onPick(kod);
+    close();
+  }
+
+  const tree = catalog?.length ? catalogTree(catalog) : null;
+  const current = path.at(-1) ?? '';
+  const node = current ? catalog.find((c) => c.kod === current) : null;
+  const items = tree?.children.get(current) ?? [];
+  const countOf = (kod) => catalog.reduce((n, c) => n + (c.kod.startsWith(`${kod}.`) ? 1 : 0), 0);
+  const inside = (kod) => value === kod || value.startsWith(`${kod}.`);
+
+  return html`
+    <div class="dialog-backdrop" onClick=${(e) => e.target === e.currentTarget && close()}>
+      <div class="dialog catalog-dialog" role="dialog" aria-modal="true" aria-labelledby="catalog-title">
+        <div class="dialog-head">
+          ${path.length > 0 && html`
+            <button type="button" class="icon-btn" onClick=${() => open(path.slice(0, -1))} aria-label="O úroveň výš">
+              <${Icon} name="back" /></button>`}
+          <h2 id="catalog-title">Katalog závad</h2>
+          <button type="button" class="icon-btn" onClick=${close} aria-label="Zavřít"><${Icon} name="x" /></button>
+        </div>
+        ${path.length > 0 && html`
+          <nav class="catalog-crumbs" aria-label="Úrovně katalogu">
+            <button type="button" class="link-btn" onClick=${() => open([])}>Všechny části</button>
+            ${path.map((k, i) => html`
+              <span class="muted">›</span>
+              <button type="button" class="link-btn" disabled=${i === path.length - 1}
+                onClick=${() => open(path.slice(0, i + 1))}>${k}</button>`)}
+          </nav>`}
+        <div class="catalog-body" ref=${bodyRef}>
+          ${!catalog && html`<${Loading} />`}
+          ${catalog && !catalog.length && html`<${Empty}>Katalog kódů zatím není nahraný.<//>`}
+          ${tree && !node && html`<p class="hint">Vyberte část vozu a pak konkrétní závadu. Klepnutím na závadu ji vyberete.</p>`}
+          ${node && (node.popis || node.opatreni
+            ? html`<div class="code-list compact">
+                <${CodeItem} c=${node} images=${images} picked=${value === node.kod} onPick=${pick} />
+              </div>`
+            : html`<h3 class="catalog-title"><span class="code-no">${node.kod}</span> ${node.cesta}</h3>`)}
+          ${node && items.length > 0 && html`<p class="hint">Podrobnější kódy:</p>`}
+          <div class="code-list compact">
+            ${items.map((c) => (tree.children.has(c.kod)
+              ? html`<${CatalogNode} key=${c.kod} c=${c} parent=${node} count=${countOf(c.kod)}
+                  picked=${inside(c.kod)} onOpen=${(kod) => open([...path, kod])} />`
+              : html`<${CodeItem} key=${c.kod} c=${c} images=${images} picked=${value === c.kod} onPick=${pick} />`))}
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
 // ───── Pole pro kód ve formuláři závady ─────
 
 /**
  * Kód závady: 4 políčka (úrovně kódu, každá 1–2 číslice), tečky se doplňují samy.
- * Pod polem nabídka kódů, které odpovídají rozepsanému kódu, a hledání podle textu.
+ * Pod polem nabídka kódů, které odpovídají rozepsanému kódu, hledání podle textu a výběr procházením katalogu.
  */
 export function CodePicker({ value, onChange }) {
   const catalog = useCatalog();
@@ -175,6 +288,7 @@ export function CodePicker({ value, onChange }) {
   const [typed, setTyped] = useState(value ?? '');
   const [focused, setFocused] = useState(false);
   const [text, setText] = useState('');
+  const [browsing, setBrowsing] = useState(false);
   const inputRef = useRef();
 
   // Hodnota nastavená zvenku (předvyplnění při úpravě závady)
@@ -235,10 +349,15 @@ export function CodePicker({ value, onChange }) {
       <div class="code-text-search">
         <${CodeTextSearch} value=${text} onInput=${setText} placeholder="Najít kód podle konstrukční části nebo závady" />
       </div>
+      <button type="button" class="btn block catalog-open" onClick=${() => setBrowsing(true)}>
+        <${Icon} name="codes" /> Vybrat z katalogu závad
+      </button>
       ${text.trim() && catalog && html`
         ${textResults.length === 0 && html`<${Empty}>Nic nenalezeno.<//>`}
         <div class="code-list compact">
           ${textResults.map((r) => html`<${CodeItem} key=${r.c.kod} c=${r.c} tokens=${tokens} onPick=${pick} picked=${r.c.kod === code} images=${images} />`)}
         </div>`}
+      ${browsing && html`<${CatalogDialog} catalog=${catalog} images=${images} value=${code} onPick=${pick}
+        onClose=${() => setBrowsing(false)} />`}
     </div>`;
 }
