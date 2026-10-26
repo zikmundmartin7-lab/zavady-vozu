@@ -544,7 +544,11 @@ export const api = {
       const reg = await navigator.serviceWorker?.getRegistration();
       if (!reg) throw new Error('Tento prohlížeč neumí zobrazit upozornění.');
       await reg.showNotification('Zkušební upozornění', { body: 'Upozornění na nové závady fungují.', icon: 'icons/icon-192.png' });
-      return 1;
+      return { sent: 1, removed: 0 };
+    },
+    async devices() {
+      const on = (await api.push.status()) === 'on';
+      return { count: on ? 1 : 0, here: on };
     },
     async disable() { /* v demu nelze odvolat – stačí zakázat v prohlížeči */ },
   },
