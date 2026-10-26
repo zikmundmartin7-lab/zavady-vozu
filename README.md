@@ -64,7 +64,7 @@ Data se ukládají v [Supabase](https://supabase.com): databázi, přihlašován
 
 ## Instalace na Android
 
-Návod pro kolegy pro Android i iPhone (stránka s QR kódem): <https://zikmundmartin7-lab.github.io/zavady-vozu/navod.html>. Odkaz je i na přihlašovací obrazovce.
+Návod pro kolegy pro Android i iPhone (stránka s QR kódem): <https://zikmundmartin7-lab.github.io/zavady-vozu/navod.html>. Odkaz je i na přihlašovací obrazovce. Na Androidu návod pozná, že je otevřený mimo Chrome (WhatsApp, Messenger, Samsung Internet…), a nabídne tlačítko **Otevřít v Chrome** (odkaz `intent://`); v Chrome rovnou ukáže **Instalovat aplikaci**.
 
 **iPhone / iPad (iOS 16.4+):** Safari → Sdílet → Přidat na plochu. Upozornění fungují jen v aplikaci spuštěné z ikony na ploše.
 
