@@ -128,7 +128,7 @@ export function LoginView() {
   const standalone = navigator.standalone || matchMedia('(display-mode: standalone)').matches;
   return html`
     <main class="page narrow login">
-      <div class="logo"><img src="icons/icon.svg" alt="" width="72" height="72" /><h1>Závady vozů</h1></div>
+      <div class="logo"><img src="icons/icon.svg?v=2" alt="" width="72" height="72" /><h1>Závady vozů</h1></div>
       ${deepLink && api.mode !== 'demo' && html`
         <div class="card link-note">
           <b>Odkaz vede na závadu v aplikaci Závady vozů.</b> Zobrazí se po přihlášení.
@@ -143,7 +143,7 @@ export function PendingView() {
   const { api, me, reloadMe } = useApp();
   return html`
     <main class="page narrow login">
-      <div class="logo"><img src="icons/icon.svg" alt="" width="72" height="72" /><h1>Závady vozů</h1></div>
+      <div class="logo"><img src="icons/icon.svg?v=2" alt="" width="72" height="72" /><h1>Závady vozů</h1></div>
       <div class="card">
         <h2>Účet čeká na schválení</h2>
         <p>Dobrý den${me.full_name ? `, ${me.full_name}` : ''}. Váš účet zatím neschválil správce aplikace.

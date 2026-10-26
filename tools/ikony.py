@@ -2,6 +2,9 @@
 
 Zapíše icons/icon.svg a PNG (192, 512, maskable 512, jednobarevný odznak 96 pro upozornění).
 Spuštění: python3 tools/ikony.py [cílová složka]
+
+Po změně ikony zvyšte číslo ?v=… ve všech odkazech na ikony (index.html, navod.html, manifest.webmanifest,
+sw.js, js/app.js, js/views/account.js) – jinak telefony a prohlížeče dál ukazují starou ikonu z paměti.
 """
 import sys
 from pathlib import Path

@@ -1,6 +1,6 @@
 // Service worker: rychlé spuštění z paměti telefonu, offline záloha a push upozornění na nové závady.
 
-const CACHE = 'zavady-v24';
+const CACHE = 'zavady-v25';
 const PHOTO_CACHE = 'zavady-foto'; // fotky závad a obrázky katalogu (přežije novou verzi aplikace)
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
@@ -8,7 +8,7 @@ const SHELL = [
   'js/views/account.js', 'js/views/codes.js', 'js/views/defect.js', 'js/views/form.js', 'js/views/groups.js',
   'js/views/regulations.js', 'js/views/wagon.js', 'js/views/admin.js', 'js/views/overview.js',
   'js/outbox.js', 'js/history.js', 'js/xlsx.js', 'js/offline.js',
-  'vendor/preact-htm.js', 'vendor/supabase.js', 'icons/icon.svg', 'icons/icon-192.png', 'icons/badge-96.png',
+  'vendor/preact-htm.js', 'vendor/supabase.js', 'icons/icon.svg?v=2', 'icons/icon-192.png?v=2', 'icons/badge-96.png?v=2',
 ];
 
 // Nová verze: stáhnout všechny soubory znovu ze sítě (ne z mezipaměti prohlížeče)
@@ -84,8 +84,8 @@ self.addEventListener('push', (e) => {
     if (!always && wins.some((w) => w.focused && w.visibilityState === 'visible')) return;
     await self.registration.showNotification(data.title || 'Nová závada', {
       body: data.body || '',
-      icon: 'icons/icon-192.png',
-      badge: 'icons/badge-96.png',
+      icon: 'icons/icon-192.png?v=2',
+      badge: 'icons/badge-96.png?v=2',
       tag: data.tag,
       data: { url: data.url || '#/' },
     });

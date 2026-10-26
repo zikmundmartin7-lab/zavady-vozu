@@ -138,12 +138,13 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 
 /* ───── Odznaky, štítky ───── */
+/* Jako u aplikací v telefonu: nové (nepřečtené) závady červeně, počty otevřených závad modře */
 
 .badge {
   position: absolute; top: -8px; right: -8px;
   min-width: 26px; height: 26px; padding: 0 7px; border-radius: 13px;
   display: inline-grid; place-items: center;
-  background: var(--badge); color: #fff; font-size: .82rem; font-weight: 700;
+  background: var(--primary); color: #fff; font-size: .82rem; font-weight: 700;
   box-shadow: 0 0 0 2px var(--bg), 0 2px 4px rgba(0, 0, 0, .2);
 }
 .badge.badge-inline { position: static; box-shadow: 0 0 0 2px rgba(255, 255, 255, .7); }
@@ -159,7 +160,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .count { display: inline-flex; align-items: center; gap: .25rem; font-size: .85rem; font-weight: 600; white-space: nowrap; }
 .count::before { content: ""; width: 10px; height: 10px; border-radius: 50%; background: currentColor; }
 .count-ok::before { display: none; }
-.count-open { color: var(--red-ink); } .count-open::before { background: var(--red); }
+.count-open { color: var(--primary); } .count-open::before { background: var(--primary); }
 .count-ok { color: var(--ok-ink); }
 
 .wagon-number { font-variant-numeric: tabular-nums; letter-spacing: .02em; white-space: nowrap; }
@@ -508,7 +509,7 @@ button.code-item:hover { border-color: var(--primary); }
 .overview-text { margin: .3rem 0 .2rem; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 /* Nepřečtená závada (nová od ostatních, vůz ještě neotevřený): tučně, po otevření vozu jako ostatní */
 .overview-row.unread { font-weight: 700; }
-.unread-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--primary); flex: none; }
+.unread-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--badge); flex: none; }
 
 /* ───── Zápis bez signálu ───── */
 
@@ -537,19 +538,19 @@ button.code-item:hover { border-color: var(--primary); }
 .tile-badges .badge { position: static; }
 .new-badge {
   display: inline-grid; place-items: center; height: 26px; padding: 0 9px; border-radius: 13px;
-  background: var(--primary); color: #fff; font-size: .8rem; font-weight: 700; white-space: nowrap;
+  background: var(--badge); color: #fff; font-size: .8rem; font-weight: 700; white-space: nowrap;
   box-shadow: 0 0 0 2px var(--bg), 0 2px 4px rgba(0, 0, 0, .2);
 }
 .new-badge.badge-inline { box-shadow: 0 0 0 2px rgba(255, 255, 255, .7); margin-right: 6px; }
 .new-badge.small { height: 22px; padding: 0 8px; font-size: .75rem; box-shadow: none; }
-.chip-new { background: var(--primary); color: #fff; }
+.chip-new { background: var(--badge); color: #fff; }
 /* Odznak u záložky Přehled: počet nových závad */
 .nav-icon { position: relative; display: inline-flex; }
 .nav-badge {
   position: absolute; top: -6px; left: calc(100% - 9px);
   min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px;
   display: inline-grid; place-items: center;
-  background: var(--primary); color: #fff; font-size: .72rem; font-weight: 700; line-height: 1;
+  background: var(--badge); color: #fff; font-size: .72rem; font-weight: 700; line-height: 1;
   box-shadow: 0 0 0 2px var(--surface);
 }
 
