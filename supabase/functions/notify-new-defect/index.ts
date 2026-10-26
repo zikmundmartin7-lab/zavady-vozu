@@ -1,6 +1,7 @@
 // Supabase Edge Function: push upozornění do telefonů.
 //   { defect_id }      – nová závada → všem ostatním schváleným uživatelům (volá createDefect po uložení)
 //   { new_user: true } – nový uživatel se zaregistroval → správcům, ať ho schválí (volá signUp)
+//   { comment_id }     – nový komentář → autorovi závady a všem, kdo už u ní komentovali (volá addComment)
 //   { test: true }     – zkušební upozornění jen na zařízení přihlášeného uživatele
 //
 // Potřebné tajné hodnoty (Edge Functions → Secrets):
@@ -89,6 +90,35 @@ Deno.serve(async (req) => {
       body: `${p.full_name || 'Bez jména'} (${p.email}) – schvalte v Můj účet → Správa uživatelů`,
       url: '#/uzivatele',
       tag: `user-${p.id}`,
+    }));
+  }
+
+  // Nový komentář → autorovi závady a všem, kdo už se k ní vyjádřili (kromě pisatele)
+  if (body.comment_id) {
+    const { data: c } = await asUser.from('comment_feed')
+      .select('id, defect_id, author_id, author_name, body, created_at').eq('id', body.comment_id).maybeSingle();
+    // Rozeslat smí jen autor komentáře, a to jen krátce po napsání (ochrana proti zneužití)
+    if (!c || c.author_id !== user.id || Date.now() - Date.parse(c.created_at) > 10 * 60_000) {
+      return json({ error: 'Komentář nenalezen.' }, 404);
+    }
+    const { data: def } = await admin.from('defects').select('wagon_id, created_by').eq('id', c.defect_id).maybeSingle();
+    if (!def) return json({ error: 'Závada nenalezena.' }, 404);
+    const { data: others } = await admin.from('comments').select('author_id').eq('defect_id', c.defect_id);
+    const people = new Set([def?.created_by, ...(others ?? []).map((o) => o.author_id)]);
+    people.delete(user.id);
+    const ids = [...people].filter(Boolean);
+    if (!ids.length) return json({ sent: 0, removed: 0, errors: [] });
+    const { data: w } = await admin.from('wagons').select('number').eq('id', def.wagon_id).single();
+    const { data: subs } = await admin.from('push_subscriptions')
+      .select('endpoint, subscription, profiles!inner(role)')
+      .in('user_id', ids)
+      .in('profiles.role', ['user', 'repairer', 'admin']);
+    const text = `${c.author_name || 'Někdo'}: ${c.body}`.replace(/\s+/g, ' ');
+    return json(await send(subs ?? [], {
+      title: `Nový komentář${w ? ` · ${formatNumber(w.number)}` : ''}`,
+      body: text.length > 180 ? `${text.slice(0, 177)}…` : text,
+      url: `#/zavada/${c.defect_id}`,
+      tag: `comment-${c.id}`,
     }));
   }
 

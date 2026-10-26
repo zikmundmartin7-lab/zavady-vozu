@@ -66,9 +66,11 @@ function commit(event = {}) {
 addEventListener('storage', (e) => {
   if (e.key !== KEY || !e.newValue) return;
   const before = new Set(state.defects.map((d) => d.id));
+  const beforeComments = new Set(state.comments.map((c) => c.id));
   state = JSON.parse(e.newValue);
   const added = state.defects.filter((d) => !before.has(d.id));
-  listeners.forEach((fn) => fn({ newDefect: added[0] ?? null }));
+  const addedComment = state.comments.find((c) => !beforeComments.has(c.id));
+  listeners.forEach((fn) => fn({ newDefect: added[0] ?? null, newComment: addedComment ?? null }));
 });
 
 // ───── Soubory v IndexedDB ─────
@@ -476,9 +478,9 @@ export const api = {
     commit({ comment: c.defect_id });
   },
 
-  // Živé aktualizace: cb({ newDefect }) při jakékoli změně
+  // Živé aktualizace: cb({ newDefect, newComment }) při jakékoli změně (nové jen od jiných uživatelů)
   subscribeChanges(cb) {
-    const fn = (e) => !e.auth && cb({ newDefect: e.own ? null : e.newDefect ?? null });
+    const fn = (e) => !e.auth && cb({ newDefect: e.own ? null : e.newDefect ?? null, newComment: e.newComment ?? null });
     listeners.add(fn);
     return () => listeners.delete(fn);
   },

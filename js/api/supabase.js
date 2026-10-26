@@ -399,7 +399,10 @@ export const api = {
     return check(await sb.from('comment_feed').select('*').eq('defect_id', defectId).order('created_at'));
   },
   async addComment(defectId, body) {
-    check(await sb.from('comments').insert({ defect_id: defectId, body: body.trim(), author_id: await currentUserId() }));
+    const c = check(await sb.from('comments')
+      .insert({ defect_id: defectId, body: body.trim(), author_id: await currentUserId() }).select('id').single());
+    // Upozornění autorovi závady a všem, kdo už ji komentovali (Edge Function). Chyba nevadí – komentář je uložený.
+    sb.functions.invoke('notify-new-defect', { body: { comment_id: c.id } }).catch(() => {});
   },
   async deleteComment(id) {
     check(await sb.from('comments').delete().eq('id', id));
@@ -412,7 +415,10 @@ export const api = {
         const mine = p.new?.created_by && p.new.created_by === (await currentUserId());
         cb({ newDefect: p.eventType === 'INSERT' && !mine ? p.new : null });
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, () => cb({ newDefect: null }))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, async (p) => {
+        const mine = p.new?.author_id && p.new.author_id === (await currentUserId());
+        cb({ newDefect: null, newComment: p.eventType === 'INSERT' && !mine ? p.new : null });
+      })
       .subscribe();
     return () => sb.removeChannel(ch);
   },
