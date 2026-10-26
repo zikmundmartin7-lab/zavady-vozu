@@ -51,7 +51,8 @@ Deno.serve(async (req) => {
     const errors: string[] = [];
     await Promise.all(subs.map(async (s) => {
       try {
-        await webpush.sendNotification(s.subscription, JSON.stringify(payload), { TTL: 24 * 3600 });
+        // urgency high: Android doručí hned i zamčenému telefonu v úsporném režimu (jinak až po probuzení)
+        await webpush.sendNotification(s.subscription, JSON.stringify(payload), { TTL: 24 * 3600, urgency: 'high' });
         sent++;
       // deno-lint-ignore no-explicit-any
       } catch (e: any) {
