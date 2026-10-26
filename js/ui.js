@@ -111,6 +111,7 @@ const ICONS = {
   lock: 'M6 11h12v10H6zM8.5 11V7.5a3.5 3.5 0 0 1 7 0V11',
   cloud: 'M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 9.5a4 4 0 0 1-.5 7.97zM12 11v6M9.5 14.5 12 17l2.5-2.5',
   share: `${circle(18, 5, 3)}${circle(6, 12, 3)}${circle(18, 19, 3)}M8.6 13.5l6.8 4M15.4 6.5l-6.8 4`,
+  'ios-share': 'M12 3v12M8 7l4-4 4 4M5 11v9h14v-9',
 };
 export const Icon = ({ name, size = 20, class: cls = '' }) => html`
   <svg class="icon ${cls}" width=${size} height=${size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -708,7 +709,7 @@ export async function enablePush(api, toast, userId) {
 /** Karta na úvodní obrazovce: zapnutí upozornění jedním klepnutím (+ Povolit v telefonu). */
 export function PushOffer() {
   const { api, me, toast } = useApp();
-  const [state, setState] = useState(null); // null = nic | 'offer' | 'denied' | 'ios-safari'
+  const [state, setState] = useState(null); // null = nic | 'offer' | 'denied'
   const [busy, setBusy] = useState(false);
   const hiddenKey = `zavady-push-offer-hidden:${me.id}`;
 
@@ -716,8 +717,8 @@ export function PushOffer() {
     let alive = true;
     const check = async () => {
       let next = null;
-      if (flag(hiddenKey) || isPushOff(me.id)) next = null;
-      else if (isIos() && !isStandalone()) next = 'ios-safari';
+      // na iPhonu v Safari upozornění nejdou – přidání na plochu nabízí karta InstallOffer
+      if (flag(hiddenKey) || isPushOff(me.id) || (isIos() && !isStandalone())) next = null;
       else if (api.push.supported() && (await api.push.status().catch(() => 'off')) !== 'on') {
         // už povolené (třeba po novém přihlášení) → zapnout bez ptaní; jinak nabídnout
         if (api.push.permission() === 'denied') next = 'denied';
@@ -763,12 +764,87 @@ export function PushOffer() {
           ? 'Nastavení → Oznámení → Závady vozů → Povolit oznámení'
           : 'Nastavení → Aplikace → Závady vozů (případně Chrome) → Oznámení'}</b></p>
         <button class="btn" onClick=${hide}>Rozumím</button>`}
-      ${state === 'ios-safari' && html`
-        <p>Na iPhonu chodí upozornění jen do aplikace otevřené <b>z ikony na ploše</b>, ne ze Safari.</p>
+    </section>`;
+}
+
+// ───── Aplikace na plochu: karta na přihlášení, při čekání na schválení a na úvodní obrazovce ─────
+
+// Android; tablet (a telefon s „Verzí pro počítač“) se hlásí jako počítač s Linuxem – pozná se podle
+// dotykového displeje (počítače s Linuxem a dotykem jsou vzácné, Chromebook má v userAgent CrOS)
+const isAndroid = () => /Android/.test(navigator.userAgent) || navigator.userAgentData?.platform === 'Android'
+  || (/Linux/.test(navigator.userAgent) && !/CrOS/.test(navigator.userAgent) && navigator.maxTouchPoints > 0);
+// Prohlížeč uvnitř jiné aplikace (WhatsApp, Messenger, Instagram…) – odtud instalace nejde
+const isInApp = () => /; wv\)|FBAN|FBAV|Instagram|WhatsApp|Line\//.test(navigator.userAgent);
+// Chrome (ne Samsung Internet, Edge, Firefox…) podle značky prohlížeče, starší verze podle userAgent
+function isChrome() {
+  const brands = (navigator.userAgentData?.brands ?? []).map((b) => b.brand);
+  if (brands.length) return brands.includes('Google Chrome');
+  return /Chrome\/\d/.test(navigator.userAgent)
+    && !/SamsungBrowser|EdgA|OPR\/|YaBrowser|MiuiBrowser|HuaweiBrowser|UCBrowser|Firefox/.test(navigator.userAgent);
+}
+// Odkaz, který aplikaci otevře v Chrome; když v telefonu Chrome není, nabídne ho Google Play
+const chromeLink = () => `intent://${location.host}${location.pathname}${location.search}#Intent;scheme=https;`
+  + `package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent('https://play.google.com/store/apps/details?id=com.android.chrome')};end`;
+
+// „Teď ne“ platí pro toto zařízení (instaluje se do zařízení, ne k účtu); po týdnu se karta nabídne znovu
+const INSTALL_HIDDEN = 'zavady-install-offer-hidden';
+const INSTALL_AGAIN_AFTER = 7 * 864e5;
+const installHiddenAt = () => { try { return Number(localStorage.getItem(INSTALL_HIDDEN)) || 0; } catch { return 0; } };
+
+/**
+ * Nabídka přidat aplikaci na plochu (jen telefon a tablet, ne v nainstalované aplikaci):
+ * Chrome → tlačítko Instalovat (systémové okno, stačí potvrdit); Android mimo Chrome → Otevřít v Chrome;
+ * iPhone → postup Sdílet → Přidat na plochu (sama se nainstalovat nedá, jen tak tam chodí upozornění).
+ */
+export function InstallOffer() {
+  const { installPrompt, install, installed } = useApp();
+  const [hiddenAt, setHiddenAt] = useState(installHiddenAt);
+  const [busy, setBusy] = useState(false);
+
+  if (installed || isStandalone() || Date.now() - hiddenAt < INSTALL_AGAIN_AFTER) return null;
+  let state = null; // 'prompt' | 'android-other' | 'ios' | 'ios-in-app'
+  if (isIos()) state = isInApp() ? 'ios-in-app' : 'ios';
+  else if (isAndroid()) state = installPrompt ? 'prompt' : isInApp() || !isChrome() ? 'android-other' : null;
+  if (!state) return null; // Chrome bez výzvy k instalaci = aplikace už na ploše je (nebo instalace nejde)
+
+  const hide = () => {
+    try { localStorage.setItem(INSTALL_HIDDEN, String(Date.now())); } catch { /* nevadí */ }
+    setHiddenAt(Date.now());
+  };
+  async function doInstall() {
+    setBusy(true);
+    try { await install(); } finally { setBusy(false); }
+  }
+
+  return html`
+    <section class="card install-offer">
+      <h2><${Icon} name="download" /> Aplikace na plochu</h2>
+      ${state === 'prompt' && html`
+        <p>Přidejte si aplikaci na plochu – bude mít vlastní ikonu, otevře se rychleji a budou chodit upozornění na nové závady.</p>
         <div class="row">
-          <a class="btn btn-primary" href="navod.html">Jak přidat na plochu</a>
+          <button class="btn btn-primary" disabled=${busy} onClick=${doInstall}>Instalovat</button>
+          <button class="btn" onClick=${hide}>Teď ne</button>
+        </div>
+        <p class="hint">Telefon se zeptá – klepněte znovu na <b>Instalovat</b>.</p>`}
+      ${state === 'android-other' && html`
+        <p>${isInApp()
+          ? 'Aplikaci máte otevřenou uvnitř jiné aplikace (WhatsApp, Messenger…). Na plochu ji přidáte z Chromu.'
+          : 'Na plochu se aplikace přidává z prohlížeče Chrome.'}</p>
+        <div class="row">
+          <a class="btn btn-primary" href=${chromeLink()}>Otevřít v Chrome</a>
           <button class="btn" onClick=${hide}>Teď ne</button>
         </div>`}
+      ${state === 'ios' && html`
+        <p>Na iPhonu ji přidáte ručně: dole klepněte na <b>Sdílet</b> <${Icon} name="ios-share" size=${18} class="inline-icon" />
+          a pak na <b>Přidat na plochu</b>. Jen tak vám budou chodit upozornění na nové závady.</p>
+        <div class="row">
+          <a class="btn btn-primary" href="navod.html">Návod s obrázky</a>
+          <button class="btn" onClick=${hide}>Teď ne</button>
+        </div>`}
+      ${state === 'ios-in-app' && html`
+        <p>Aplikaci máte otevřenou uvnitř jiné aplikace (WhatsApp, Messenger…). Otevřete ji v <b>Safari</b>
+          (nabídka <b>⋯</b> → <b>Otevřít v Safari</b>) a tam ji přidejte na plochu.</p>
+        <button class="btn" onClick=${hide}>Teď ne</button>`}
     </section>`;
 }
 

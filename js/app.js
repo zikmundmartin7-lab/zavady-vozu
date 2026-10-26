@@ -82,7 +82,8 @@ function App() {
   const [media, setMedia] = useState(null);
   const [sharing, setSharing] = useState(null); // { id, afterSave } – okno pro sdílení závady
   const [recovery, setRecovery] = useState(false);
-  const [installPrompt, setInstallPrompt] = useState(null);
+  const [installPrompt, setInstallPrompt] = useState(null); // výzva Chromu k instalaci na plochu (jde použít jen jednou)
+  const [installed, setInstalled] = useState(false);
   const [tabReset, setTabReset] = useState(0);
   const [pendingUsers, setPendingUsers] = useState(0);
   const [newDefects, setNewDefects] = useState(() => countNew(readCached(api.mode, 'groups')));
@@ -109,8 +110,18 @@ function App() {
       reloadMe();
     });
     const onInstall = (e) => { e.preventDefault(); setInstallPrompt(e); };
+    const onInstalled = () => {
+      setInstallPrompt(null);
+      setInstalled(true);
+      toast('Aplikaci najdete na ploše jako ikonu Závady vozů – od teď ji otevírejte z ní.', { title: 'Aplikace je na ploše', duration: 10000 });
+    };
     addEventListener('beforeinstallprompt', onInstall);
-    return () => { off(); removeEventListener('beforeinstallprompt', onInstall); };
+    addEventListener('appinstalled', onInstalled);
+    return () => {
+      off();
+      removeEventListener('beforeinstallprompt', onInstall);
+      removeEventListener('appinstalled', onInstalled);
+    };
   }, []);
 
   // Správce: počet uživatelů čekajících na schválení (tečka u ikony účtu)
@@ -211,7 +222,15 @@ function App() {
   }, [me?.id, me?.role]);
 
   const ctx = {
-    api, me, version, refresh, toast, reloadMe, installPrompt,
+    api, me, version, refresh, toast, reloadMe, installPrompt, installed,
+    // Instalace na plochu: systémové okno Chromu, uživatel jen potvrdí
+    install: async () => {
+      if (!installPrompt) return 'unavailable';
+      installPrompt.prompt();
+      const { outcome } = await installPrompt.userChoice;
+      setInstallPrompt(null);
+      return outcome;
+    },
     openMedia: (items, index) => setMedia({ items, index }),
     share: (id, opts = {}) => setSharing({ id, ...opts }),
     resetTab: () => { setTabReset((n) => n + 1); scrollTo(0, 0); },
