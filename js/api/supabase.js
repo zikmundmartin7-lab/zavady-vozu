@@ -181,9 +181,11 @@ export const api = {
   async updatePassword(password) {
     check(await sb.auth.updateUser({ password, data: { temp_password: false } }));
   },
+  // Odhlásit jen toto zařízení. Výchozí odhlášení Supabase ruší přihlášení na všech zařízeních – na ostatních
+  // pak ještě chvíli jde ukládat, ale funkce na serveru (upozornění) přihlášení odmítnou.
   async signOut() {
     await api.push.disable().catch(() => {});
-    await sb.auth.signOut();
+    await sb.auth.signOut({ scope: 'local' });
   },
 
   // Skupiny a vozy
