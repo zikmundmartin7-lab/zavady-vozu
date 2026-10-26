@@ -53,13 +53,23 @@ async function currentUserId() {
 }
 
 // Odběr upozornění v tomto telefonu (povolení už musí být udělené) → uložit k přihlášenému uživateli
+// Odběr upozornění tohoto zařízení přiřadit přihlášenému uživateli. Když v databázi patří jinému účtu
+// (na zařízení se přepnul účet bez odhlášení), databáze ho přepsat nedovolí – pak se založí nový odběr
+// a starý přestane platit (funkce ho při dalším odesílání sama smaže).
 async function subscribePush() {
   const reg = await navigator.serviceWorker.ready;
-  const sub = (await reg.pushManager.getSubscription())
-    ?? await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64UrlToBytes(VAPID_PUBLIC_KEY) });
-  check(await sb.from('push_subscriptions').upsert({
-    endpoint: sub.endpoint, subscription: sub.toJSON(), user_id: await currentUserId(),
-  }));
+  const subscribe = () => reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64UrlToBytes(VAPID_PUBLIC_KEY) });
+  const save = async (s) => sb.from('push_subscriptions').upsert({
+    endpoint: s.endpoint, subscription: s.toJSON(), user_id: await currentUserId(),
+  });
+  let sub = (await reg.pushManager.getSubscription()) ?? await subscribe();
+  let res = await save(sub);
+  if (res.error?.code === '42501') {
+    await sub.unsubscribe();
+    sub = await subscribe();
+    res = await save(sub);
+  }
+  check(res);
 }
 
 // Podepsané odkazy na soubory (platí hodinu); po částech, ať dotaz nepřeroste
