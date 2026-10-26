@@ -143,6 +143,45 @@ export function typeCode(prev, raw, catalog) {
 
 export const codeOf = (typed) => typed.replace(/\.$/, '');
 
+// ───── Procházení katalogu po úrovních ─────
+
+/**
+ * Strom katalogu: children = kód → přímo podřízené kódy v pořadí katalogu ('' = části katalogu),
+ * parent = kód → nadřazený kód. Když v katalogu chybí mezistupeň, kód patří pod nejbližší existující.
+ */
+const trees = new WeakMap();
+export function catalogTree(catalog) {
+  if (!trees.has(catalog)) {
+    const known = new Set(catalog.map((c) => c.kod));
+    const children = new Map([['', []]]);
+    const parent = new Map();
+    for (const c of catalog) {
+      const parts = c.kod.split('.');
+      let p = '';
+      for (let n = parts.length - 1; n >= 1 && !p; n--) {
+        const k = parts.slice(0, n).join('.');
+        if (known.has(k)) p = k;
+      }
+      parent.set(c.kod, p);
+      if (!children.has(p)) children.set(p, []);
+      children.get(p).push(c);
+    }
+    trees.set(catalog, { children, parent });
+  }
+  return trees.get(catalog);
+}
+
+/** Úrovně katalogu, na kterých je kód vidět: kód s podřízenými se otevře, jinak jeho nadřazený. */
+export function catalogPathTo(catalog, kod) {
+  const { children, parent } = catalogTree(catalog);
+  let k = kod;
+  while (k && !parent.has(k)) k = k.split('.').slice(0, -1).join('.');
+  const path = [];
+  if (k && children.has(k)) path.push(k);
+  for (let p = parent.get(k); p; p = parent.get(p)) path.unshift(p);
+  return path;
+}
+
 // ───── Obrázky z katalogu ─────
 
 // Název souboru obrázku = kód_pořadí.png (např. 1.3.3_1.png)
