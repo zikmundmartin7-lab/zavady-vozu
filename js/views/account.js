@@ -1,7 +1,7 @@
 // Přihlášení, registrace, čekání na schválení, můj účet a správa uživatelů.
 
 import { html, useEffect, useState } from '../../vendor/preact-htm.js';
-import { DEFAULT_PASSWORD, ROLES, can } from '../model.js';
+import { DEFAULT_PASSWORD, ROLES, can, plural } from '../model.js';
 import { APP_VERSION } from '../version.js';
 import {
   Empty, ErrorBox, Icon, InstallOffer, Loading, TopBar, enablePush, isIos, isStandalone, setPushOff, useApp, useLoad,
@@ -188,9 +188,18 @@ export function AccountView() {
   const { api, me, toast, reloadMe, installPrompt, install } = useApp();
   const [name, setName] = useState(me.full_name);
   const [push, setPush] = useState('off');
+  const [devices, setDevices] = useState(null); // { count, here } – na kolik zařízení chodí upozornění
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => { api.push.status().then(setPush, () => {}); }, []);
+  // Přehled zařízení s upozorněním; odběr tohoto zařízení se nejdřív (znovu) přiřadí přihlášenému uživateli
+  const loadDevices = async () => {
+    if ((await api.push.status().catch(() => 'off')) === 'on') await api.push.resume().catch(() => {});
+    api.push.devices().then(setDevices, () => setDevices(null));
+  };
+  useEffect(() => {
+    api.push.status().then(setPush, () => {});
+    if (api.push.supported()) loadDevices();
+  }, []);
 
   async function saveName(e) {
     e.preventDefault();
@@ -199,8 +208,16 @@ export function AccountView() {
   async function testPush() {
     setBusy(true);
     try {
-      const n = await api.push.test();
-      toast(`Zkušební upozornění odesláno (zařízení: ${n}).`);
+      const r = await api.push.test();
+      toast(`Zkušební upozornění odesláno na ${plural(r.sent, 'zařízení', 'zařízení', 'zařízení')}`
+        + `${r.removed ? `, neplatná odebrána: ${r.removed}` : ''}.`);
+      const d = await api.push.devices().catch(() => null);
+      setDevices(d);
+      if (d && !d.here) {
+        toast('Toto zařízení upozornění nedostává – služba upozornění ho odmítla. Zkuste upozornění vypnout '
+          + 'a znovu zapnout. Když to nepomůže, zařízení push upozornění neumí (např. tablet bez služeb Google).',
+        { kind: 'error', sticky: true });
+      }
     } catch (err) {
       toast(err.message, { kind: 'error' });
     } finally {
@@ -212,6 +229,7 @@ export function AccountView() {
     try {
       if (push === 'on') { await api.push.disable(); setPushOff(me.id, true); setPush('off'); toast('Upozornění vypnuta.'); }
       else { await enablePush(api, toast, me.id); setPush('on'); }
+      loadDevices();
     } catch (err) {
       toast(err.message, { kind: 'error' });
     } finally {
@@ -238,6 +256,9 @@ export function AccountView() {
             <p class="muted">${push === 'on'
               ? 'Zapnuto – když kdokoli vloží novou závadu, přijde vám upozornění i při zavřené aplikaci.'
               : 'Vypnuto. Zapněte, ať vám přijde upozornění, když někdo vloží novou závadu.'}</p>
+            ${devices && html`
+              <p class="muted small">Upozornění chodí na ${plural(devices.count, 'zařízení', 'zařízení', 'zařízení')}${devices.here ? ', včetně tohoto' : ''}.
+                ${push === 'on' && !devices.here && html`<b class="error-text">Toto zařízení mezi nimi není</b> – vypněte a znovu zapněte upozornění.`}</p>`}
             <div class="row">
               <button class="btn ${push === 'on' ? '' : 'btn-primary'}" disabled=${busy} onClick=${togglePush}>
                 ${push === 'on' ? 'Vypnout upozornění' : 'Zapnout upozornění'}</button>

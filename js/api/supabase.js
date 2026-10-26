@@ -494,7 +494,14 @@ export const api = {
         throw new Error(detail?.error ?? 'Funkce pro upozornění neodpověděla – je nasazená v Supabase?');
       }
       if (data?.errors?.length) throw new Error(`Odeslání selhalo: ${data.errors[0]}`);
-      return data.sent;
+      return data; // { sent, removed } – removed = zařízení, která služba upozornění odmítla (smazána)
+    },
+    // Na kolik zařízení chodí přihlášenému uživateli upozornění a jestli je mezi nimi toto (přehled v Můj účet)
+    async devices() {
+      const rows = check(await sb.from('push_subscriptions').select('endpoint'));
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      return { count: rows.length, here: !!sub && rows.some((r) => r.endpoint === sub.endpoint) };
     },
     async disable() {
       if (!('serviceWorker' in navigator)) return;
