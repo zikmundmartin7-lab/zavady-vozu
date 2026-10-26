@@ -1,6 +1,6 @@
 // Service worker: rychlé spuštění z paměti telefonu, offline záloha a push upozornění na nové závady.
 
-const CACHE = 'zavady-v32'; // zvýšit spolu s APP_VERSION v js/version.js
+const CACHE = 'zavady-v33'; // zvýšit spolu s APP_VERSION v js/version.js
 const PHOTO_CACHE = 'zavady-foto'; // fotky závad a obrázky katalogu (přežije novou verzi aplikace)
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
@@ -90,12 +90,16 @@ self.addEventListener('fetch', (e) => {
   })());
 });
 
+// Safari (iPhone, iPad, Mac) chce na každé push upozornění opravdu ukázat – po několika „tichých“ odběr
+// upozornění zruší. iPhone navíc aplikaci v pozadí někdy hlásí jako otevřenou. Proto se tam ukáže vždy.
+const SAFARI = /AppleWebKit/.test(navigator.userAgent) && !/Chrome|Chromium|CriOS|Android|Edg/.test(navigator.userAgent);
+
 self.addEventListener('push', (e) => {
   const data = e.data ? e.data.json() : {};
   e.waitUntil((async () => {
     // Je-li aplikace právě otevřená, upozorní uživatele sama (živé aktualizace). Zkušební upozornění se ukáže vždy.
     const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    const always = data.tag === 'test' || String(data.tag ?? '').startsWith('user-');
+    const always = SAFARI || data.tag === 'test' || String(data.tag ?? '').startsWith('user-');
     if (!always && wins.some((w) => w.focused && w.visibilityState === 'visible')) return;
     await self.registration.showNotification(data.title || 'Nová závada', {
       body: data.body || '',
