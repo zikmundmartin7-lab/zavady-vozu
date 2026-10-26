@@ -73,8 +73,44 @@ let toastSeq = 0;
 // Nové závady od ostatních ve všech skupinách (součet group_overview.new_count)
 const countNew = (groups) => (groups ?? []).reduce((n, g) => n + (g.new_count ?? 0), 0);
 
+// Klávesnice nesmí vyskočit sama. iPhone při spuštění nebo návratu do aplikace někdy sám vrátí kurzor
+// do posledního políčka (hledání vozu). Krátce po spuštění a po návratu se proto políčko, do kterého
+// uživatel neklepl, hned opustí; při odchodu z aplikace se kurzor z políčka zruší.
+const GUARD_MS = 2000;
+function useNoAutoKeyboard() {
+  useEffect(() => {
+    let guardUntil = Date.now() + GUARD_MS;
+    let lastUserAt = 0;
+    const isField = (el) => !!el?.matches?.('input, textarea, select, [contenteditable="true"]');
+    const unwanted = () => Date.now() < guardUntil && Date.now() - lastUserAt > 1000;
+    const onUser = () => { lastUserAt = Date.now(); };
+    const onFocusIn = (e) => { if (unwanted() && isField(e.target)) e.target.blur(); };
+    const onShow = () => {
+      guardUntil = Date.now() + GUARD_MS;
+      lastUserAt = 0; // klepnutí z doby před odchodem z aplikace se nepočítají
+      if (unwanted() && isField(document.activeElement)) document.activeElement.blur();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') onShow();
+      else if (isField(document.activeElement)) document.activeElement.blur();
+    };
+    const userEvents = ['pointerdown', 'touchstart', 'mousedown', 'keydown'];
+    userEvents.forEach((t) => addEventListener(t, onUser, { capture: true, passive: true }));
+    addEventListener('focusin', onFocusIn, true);
+    addEventListener('pageshow', onShow);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      userEvents.forEach((t) => removeEventListener(t, onUser, { capture: true }));
+      removeEventListener('focusin', onFocusIn, true);
+      removeEventListener('pageshow', onShow);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, []);
+}
+
 function App() {
   const route = useRoute();
+  useNoAutoKeyboard();
   // Poslední přihlášený uživatel z paměti telefonu → aplikace se ukáže hned, ověření proběhne na pozadí
   const [me, setMe] = useState(() => readMe()); // undefined = načítám, null = nepřihlášen
   const [version, setVersion] = useState(0);
