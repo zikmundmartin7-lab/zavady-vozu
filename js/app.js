@@ -119,7 +119,7 @@ function App() {
     api.listProfiles().then((p) => setPendingUsers(p.filter((u) => u.role === 'pending').length), () => {});
   }, [me?.id, me?.role, version]);
 
-  // Počet nových závad pro modrý odznak u záložky Přehled; přepočítá se i po otevření vozu
+  // Počet nových závad pro červený odznak u záložky Přehled; přepočítá se i po otevření vozu
   // (otevřením jsou jeho závady přečtené)
   useEffect(() => {
     if (!can.use(me)) { setNewDefects(0); return; }
@@ -203,7 +203,7 @@ function App() {
       if (api.mode === 'demo' && document.hidden && window.Notification?.permission === 'granted') {
         const reg = await navigator.serviceWorker?.getRegistration();
         reg?.showNotification(title, {
-          body: newDefect.description, icon: 'icons/icon-192.png', badge: 'icons/badge-96.png',
+          body: newDefect.description, icon: 'icons/icon-192.png?v=2', badge: 'icons/badge-96.png?v=2',
           data: { url: `#/vuz/${newDefect.wagon_id}` }, tag: newDefect.id,
         });
       }

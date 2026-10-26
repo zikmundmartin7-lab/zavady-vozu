@@ -182,7 +182,7 @@ export function CodeSummary({ code, catalog }) {
 // Spodní lišta se záložkami hlavní obrazovky
 // Klepnutí na záložku, která je už otevřená na své úvodní obrazovce, ji vrátí na začátek
 // (vymaže hledání, posune nahoru). Z vnořené stránky (skupina, vůz, část katalogu) vede na úvod záložky.
-// Modrý odznak u záložky Přehled = počet nových (nepřečtených) závad od ostatních.
+// Červený odznak u záložky Přehled = počet nových (nepřečtených) závad od ostatních.
 export function BottomNav({ active }) {
   const { resetTab, newDefects } = useApp();
   const tab = (key, href, icon, label, unread = 0) => html`

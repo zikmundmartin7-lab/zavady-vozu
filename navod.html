@@ -7,8 +7,8 @@
   <meta name="description" content="Jak nainstalovat aplikaci Závady vozů do telefonu s Androidem nebo do iPhonu" />
   <meta name="theme-color" content="#1f4e8c" />
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="icon" href="icons/icon.svg" type="image/svg+xml" />
-  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="icon" href="icons/icon.svg?v=2" type="image/svg+xml" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png?v=2" />
   <link rel="stylesheet" href="css/app.css" />
   <style>
     .guide { padding-bottom: 48px; }
@@ -81,7 +81,7 @@
 
   <main class="page narrow guide">
     <section class="card hero">
-      <img src="icons/icon-192.png" alt="" />
+      <img src="icons/icon-192.png?v=2" alt="" />
       <div>
         <h2>Aplikace na evidenci závad vozů</h2>
         <p>Instalace zabere asi 2 minuty. Aplikace se nestahuje z Google Play ani z App Store, přidá se z prohlížeče a pak funguje jako běžná aplikace.</p>
@@ -131,7 +131,7 @@
         <div>
           <h3>Spouštějte ji z ikony</h3>
           <p>Na ploše (nebo v seznamu aplikací) přibude tato ikona:</p>
-          <span class="homescreen"><img src="icons/icon-192.png" alt="" />Závady vozů</span>
+          <span class="homescreen"><img src="icons/icon-192.png?v=2" alt="" />Závady vozů</span>
           <p>Od teď aplikaci otevírejte <b>vždy z ikony</b>, ne z Chromu.</p>
         </div>
       </li>
@@ -167,7 +167,7 @@
         <div>
           <h3>Spouštějte ji z ikony</h3>
           <p>Na ploše přibude tato ikona:</p>
-          <span class="homescreen"><img src="icons/icon-192.png" alt="" />Závady vozů</span>
+          <span class="homescreen"><img src="icons/icon-192.png?v=2" alt="" />Závady vozů</span>
           <p>Od teď aplikaci otevírejte <b>vždy z ikony</b>, ne ze Safari. Jinak na iPhonu nebudou chodit upozornění.</p>
         </div>
       </li>
@@ -212,7 +212,7 @@
           <ul>
             <li>po uložení nové závady aplikace sama nabídne <b>Sdílet…</b> – vyberte <b>WhatsApp</b> a skupinu,</li>
             <li>u každé závady to jde i později zeleným tlačítkem <b>WhatsApp</b>,</li>
-            <li>modrý odznak <b>„nové“</b> u skupin ukazuje závady, které jste ještě neviděli,</li>
+            <li>červený odznak <b>„nové“</b> u skupin a číslo u záložky <b>Přehled</b> ukazují závady, které jste ještě neviděli (modré číslo = všechny otevřené závady),</li>
             <li>aplikaci obnovíte <b>stažením prstem dolů</b> na začátku stránky.</li>
           </ul>
         </div>
@@ -259,6 +259,15 @@
       <details>
         <summary>Jak získám novou verzi aplikace?</summary>
         <p>Stahuje se sama. Stačí aplikaci zavřít a znovu otevřít.</p>
+      </details>
+      <details>
+        <summary>Na ploše je pořád stará ikona</summary>
+        <p data-os="android">Chrome ikonu vymění sám, obvykle během několika dnů, když aplikaci otevřete
+          (může se zeptat, jestli změnu povolit). Když se to nestane, aplikaci odinstalujte a znovu
+          přidejte na plochu (krok 2). Závady zůstanou uložené, možná se jen budete muset znovu přihlásit.</p>
+        <p data-os="ios" hidden>iPhone ikonu po přidání na plochu už nemění. Ikonu podržte, zvolte
+          <b>Odstranit aplikaci</b>, znovu ji přidejte přes <b>Sdílet → Přidat na plochu</b> (krok 2)
+          a přihlaste se. Závady zůstanou uložené.</p>
       </details>
       <details>
         <summary>Jak aplikaci odinstalovat?</summary>
