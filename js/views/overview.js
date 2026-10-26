@@ -47,7 +47,7 @@ export async function exportDefects(rows, catalog, label, groups = [], chosen = 
 }
 
 export function OverviewView() {
-  const { api, toast } = useApp();
+  const { api, toast, seenWagons } = useApp();
   const catalog = useCatalog();
   const [status, setStatus] = useState('open');
   const data = useLoad(() => api.listOverview(status), [status], `overview:${status}`);
@@ -100,6 +100,9 @@ export function OverviewView() {
     }
   }
 
+  // Nepřečtená = nová závada od ostatních, jejíž vůz uživatel od jejího vložení neotevřel (je tučně).
+  // Otevření vozu v této relaci platí hned, i než se přehled znovu načte ze sítě.
+  const unread = (r) => r.is_new && !(seenWagons.get(r.wagon_id) > Date.parse(r.created_at));
   const filtersActive = groupIds.length || q || from || to;
   const toggleGroup = (id) => setGroupIds(groupIds.includes(id) ? groupIds.filter((x) => x !== id) : [...groupIds, id]);
 
@@ -148,8 +151,9 @@ export function OverviewView() {
       ${data.data && rows.length === 0 && html`<${Empty}>Žádné závady neodpovídají filtru.<//>`}
       <div class="overview-list">
         ${rows.slice(0, limit).map((r) => html`
-          <a key=${r.id} class="overview-row ${r.resolved_at ? 'resolved' : ''}" href="#/vuz/${r.wagon_id}">
+          <a key=${r.id} class="overview-row ${r.resolved_at ? 'resolved' : ''} ${unread(r) ? 'unread' : ''}" href="#/vuz/${r.wagon_id}">
             <div class="overview-head">
+              ${unread(r) && html`<span class="unread-dot" title="Nová závada – vůz jste od jejího zapsání neotevřeli"></span>`}
               <${WagonNumber} number=${r.number} />
               <span class="muted small">${r.group_name}</span>
               <span class="spacer"></span>

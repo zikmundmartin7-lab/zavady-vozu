@@ -139,12 +139,13 @@ function removeRows(tx, tbl, rows) {
   state[STATE_KEY[tbl]] = state[STATE_KEY[tbl]].filter((r) => !ids.has(r.id));
 }
 
-// Neopravené závady od ostatních vložené od poslední návštěvy vozu (jako group_overview.new_count)
+// Nová závada = neopravená od ostatních, vložená od poslední návštěvy vozu (jako group_overview.new_count)
+const isNewFor = (d, m) => !!m && !d.resolved_at && d.created_by !== m.id
+  && d.created_at > (state.seen[`${m.id}|${d.wagon_id}`] ?? m.news_since);
+
 function newCount(wagonIds) {
   const m = me();
-  if (!m) return 0;
-  return state.defects.filter((d) => wagonIds.includes(d.wagon_id) && !d.resolved_at && d.created_by !== m.id
-    && d.created_at > (state.seen[`${m.id}|${d.wagon_id}`] ?? m.news_since)).length;
+  return state.defects.filter((d) => wagonIds.includes(d.wagon_id) && isNewFor(d, m)).length;
 }
 
 function wagonOverview(w) {
@@ -369,7 +370,7 @@ export const api = {
 
   // Přehled závad napříč vozy
   async listOverview(status = 'open') {
-    requireMember();
+    const m = requireMember();
     const rows = state.defects
       .filter((d) => (status === 'open' ? !d.resolved_at : status === 'resolved' ? !!d.resolved_at : true))
       .map((d) => {
@@ -379,6 +380,7 @@ export const api = {
           comment_count: state.comments.filter((c) => c.defect_id === d.id).length,
           attachment_count: state.attachments.filter((a) => a.defect_id === d.id).length,
           number: w?.number ?? '', group_id: w?.group_id, group_name: groupName(w?.group_id),
+          is_new: isNewFor(d, m),
         };
       });
     return rows.sort((a, b) => (b.found_at ?? b.created_at).localeCompare(a.found_at ?? a.created_at));

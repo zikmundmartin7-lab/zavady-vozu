@@ -182,16 +182,20 @@ export function CodeSummary({ code, catalog }) {
 // Spodní lišta se záložkami hlavní obrazovky
 // Klepnutí na záložku, která je už otevřená na své úvodní obrazovce, ji vrátí na začátek
 // (vymaže hledání, posune nahoru). Z vnořené stránky (skupina, vůz, část katalogu) vede na úvod záložky.
+// Modrý odznak u záložky Přehled = počet nových (nepřečtených) závad od ostatních.
 export function BottomNav({ active }) {
-  const { resetTab } = useApp();
-  const tab = (key, href, icon, label) => html`
+  const { resetTab, newDefects } = useApp();
+  const tab = (key, href, icon, label, unread = 0) => html`
     <a href=${href} class=${active === key ? 'active' : ''}
       onClick=${(e) => { if ((location.hash || '#/') === href) { e.preventDefault(); resetTab(); } }}>
-      <${Icon} name=${icon} size=${22} /><span>${label}</span></a>`;
+      <span class="nav-icon"><${Icon} name=${icon} size=${22} />
+        ${unread > 0 && html`<span class="nav-badge" aria-label=${plural(unread, 'nová závada', 'nové závady', 'nových závad')}>
+          ${unread > 99 ? '99+' : unread}</span>`}</span>
+      <span>${label}</span></a>`;
   return html`
     <nav class="bottom-nav" aria-label="Hlavní nabídka">
       ${tab('vozy', '#/', 'wagon', 'Vozy')}
-      ${tab('prehled', '#/prehled', 'clipboard', 'Přehled')}
+      ${tab('prehled', '#/prehled', 'clipboard', 'Přehled', newDefects)}
       ${tab('kody', '#/kody', 'codes', 'Kódy závad')}
       ${tab('predpisy', '#/predpisy', 'book', 'Předpisy')}
     </nav>`;
