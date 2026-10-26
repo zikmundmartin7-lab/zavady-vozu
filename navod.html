@@ -340,7 +340,10 @@
     // Android: tlačítko „Otevřít v Chrome“, v Chrome rovnou instalace. Chrome se pozná podle značky prohlížeče
     // (userAgentData), starší verze podle userAgent.
     const ua = navigator.userAgent;
-    const isAndroid = /Android/.test(ua);
+    // Tablet s Androidem (a telefon s „Verzí pro počítač“) se hlásí jako počítač s Linuxem – pozná se
+    // podle dotykového displeje (počítače s Linuxem a dotykem jsou vzácné, Chromebook má v userAgent CrOS)
+    const isAndroid = /Android/.test(ua) || navigator.userAgentData?.platform === 'Android'
+      || (/Linux/.test(ua) && !/CrOS/.test(ua) && navigator.maxTouchPoints > 0);
     const inApp = /; wv\)|FBAN|FBAV|Instagram|WhatsApp|Line\//.test(ua);
     const brands = (navigator.userAgentData?.brands ?? []).map((b) => b.brand);
     const isChrome = !inApp && (brands.length ? brands.includes('Google Chrome')
