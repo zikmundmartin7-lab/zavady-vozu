@@ -60,11 +60,20 @@
     details p, details ul { margin: .4rem 0 0; }
     details ul { padding-left: 1.1rem; }
 
+    /* Android: „Otevřít v Chrome“ (oranžově), v Chrome rovnou instalace (zeleně) */
+    .chrome-card { border-left: 5px solid var(--orange); }
+    .chrome-card.ok { border-left-color: var(--ok); }
+    .chrome-card h2 { font-size: 1.1rem; margin: 0 0 .3rem; }
+    .chrome-card h2 svg { color: var(--ok); flex: none; }
+    .chrome-card p { margin: .35rem 0; }
+    .chrome-card .big-btn { margin: .6rem 0; }
+    .link-btn.inline { padding: 0; font: inherit; color: var(--primary); text-decoration: underline; }
+
     .qr-card { display: none; text-align: center; }
     .qr-card img { width: 220px; height: 220px; background: #fff; padding: 8px; border-radius: 12px; border: 1px solid var(--border); }
     @media (min-width: 700px) { .qr-card { display: block; } }
     @media print {
-      .topbar, .hero .btn, #install, .in-app, .os-switch { display: none !important; }
+      .topbar, .hero .btn, #install, .in-app, .chrome-card, .os-switch { display: none !important; }
       .qr-card { display: block; }
       .card { box-shadow: none; border: 1px solid var(--border); break-inside: avoid; }
     }
@@ -86,18 +95,45 @@
         <h2>Aplikace na evidenci závad vozů</h2>
         <p>Instalace zabere asi 2 minuty. Aplikace se nestahuje z Google Play ani z App Store, přidá se z prohlížeče a pak funguje jako běžná aplikace.</p>
       </div>
-      <a class="btn btn-primary block big-btn" href="./">Otevřít aplikaci</a>
+      <a class="btn btn-primary block big-btn" id="hero-open" href="./">Otevřít aplikaci</a>
     </section>
+
+    <!-- Android: mimo Chrome tlačítko „Otevřít v Chrome“, v Chrome rovnou instalace (stav vybere skript dole) -->
+    <div data-os="android">
+      <section class="card chrome-card" id="chrome-open" hidden>
+        <h2>Nejdřív otevřete návod v Chrome</h2>
+        <p id="where">Návod máte otevřený v jiném prohlížeči než Chrome.</p>
+        <a class="btn btn-primary block big-btn" id="open-chrome" href="./navod.html">Otevřít v Chrome</a>
+        <p class="muted small">Když se nic nestane, klepněte vpravo nahoře na <span class="key">⋮</span> a zvolte
+          <b>Otevřít v Chrome</b> (nebo <b>Otevřít v prohlížeči</b>). Případně
+          <button type="button" class="link-btn inline" id="copy-link">zkopírujte odkaz</button> a vložte ho do Chromu.</p>
+      </section>
+      <section class="card chrome-card ok" id="chrome-install" hidden>
+        <h2><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
+          Jste v Chrome – teď aplikaci nainstalujte</h2>
+        <button type="button" class="btn btn-primary block big-btn" id="install-now" hidden>Instalovat aplikaci</button>
+        <p id="install-manual">Klepněte vpravo nahoře na <span class="key">⋮</span> (tři tečky) → <b>Přidat na plochu</b>
+          (nebo <b>Instalovat aplikaci</b>) → <b>Instalovat</b>.</p>
+        <p class="muted small">Pak aplikaci otevřete z nové ikony na ploše a pokračujte krokem 4 – registrace.
+          Pokud už ikonu na ploše máte, otevřete aplikaci rovnou z ní.</p>
+      </section>
+      <section class="card chrome-card ok" id="chrome-done" hidden>
+        <h2><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>
+          Aplikace je nainstalovaná</h2>
+        <p>Na ploše (nebo v seznamu aplikací) je ikona <b>Závady vozů</b>. Otevřete ji a pokračujte krokem 4 – registrace.</p>
+      </section>
+    </div>
 
     <div class="os-switch" role="group" aria-label="Typ telefonu">
       <button type="button" data-pick="android" aria-pressed="true">Android</button>
       <button type="button" data-pick="ios" aria-pressed="false">iPhone / iPad</button>
     </div>
 
-    <div class="warn in-app" id="in-app" hidden>
-      <b>Návod máte otevřený uvnitř jiné aplikace</b> (WhatsApp, Messenger, e-mail…). Odtud instalace nejde.
-      <span data-os="android">Klepněte vpravo nahoře na <span class="key">⋮</span> a zvolte <b>Otevřít v Chrome</b>.</span>
-      <span data-os="ios">Zvolte <b>Otevřít v Safari</b> (ikona kompasu nebo nabídka <span class="key">⋯</span>).</span>
+    <div data-os="ios">
+      <div class="warn in-app" id="in-app" hidden>
+        <b>Návod máte otevřený uvnitř jiné aplikace</b> (WhatsApp, Messenger, e-mail…). Odtud instalace nejde.
+        Zvolte <b>Otevřít v Safari</b> (ikona kompasu nebo nabídka <span class="key">⋯</span>).
+      </div>
     </div>
 
     <!-- ───── Android: kroky 1–3 ───── -->
@@ -108,8 +144,8 @@
           <h3>Otevřete aplikaci v Chrome</h3>
           <p>Spusťte prohlížeč <b>Chrome</b> a otevřete adresu:</p>
           <a class="url" href="./">zikmundmartin7-lab.github.io/zavady-vozu</a>
-          <p class="muted small">Pokud jste odkaz dostali přes WhatsApp nebo Messenger, otevře se v jejich prohlížeči.
-            Klepněte na <span class="key">⋮</span> → <b>Otevřít v Chrome</b>.</p>
+          <p class="muted small">Když je návod otevřený jinde (WhatsApp, Messenger, jiný prohlížeč), použijte nahoře
+            tlačítko <b>Otevřít v Chrome</b>, případně <span class="key">⋮</span> → <b>Otevřít v Chrome</b>.</p>
         </div>
       </li>
       <li class="card step">
@@ -300,26 +336,66 @@
     document.querySelectorAll('[data-pick]').forEach((b) => b.addEventListener('click', () => showOs(b.dataset.pick)));
     showOs(isIos ? 'ios' : 'android');
 
-    // Odkaz otevřený uvnitř jiné aplikace (WhatsApp, Messenger, Instagram…) – tam instalace nejde.
-    if (/; wv\)|FBAN|FBAV|Instagram|WhatsApp|Line\//.test(navigator.userAgent)) {
+    // Odkaz otevřený uvnitř jiné aplikace (WhatsApp, Messenger, Instagram…) nebo v jiném prohlížeči – tam instalace nejde.
+    // Android: tlačítko „Otevřít v Chrome“, v Chrome rovnou instalace. Chrome se pozná podle značky prohlížeče
+    // (userAgentData), starší verze podle userAgent.
+    const ua = navigator.userAgent;
+    const isAndroid = /Android/.test(ua);
+    const inApp = /; wv\)|FBAN|FBAV|Instagram|WhatsApp|Line\//.test(ua);
+    const brands = (navigator.userAgentData?.brands ?? []).map((b) => b.brand);
+    const isChrome = !inApp && (brands.length ? brands.includes('Google Chrome')
+      : /Chrome\/\d/.test(ua) && !/SamsungBrowser|EdgA|OPR\/|YaBrowser|MiuiBrowser|HuaweiBrowser|UCBrowser|Firefox/.test(ua));
+    // Mimo Chrome a před instalací je hlavní akcí karta, ne „Otevřít aplikaci“ nahoře
+    const showCard = (id) => {
+      ['chrome-open', 'chrome-install', 'chrome-done'].forEach((x) => { document.getElementById(x).hidden = x !== id; });
+      document.getElementById('hero-open').hidden = id !== 'chrome-done';
+    };
+    if (isAndroid) {
+      if (matchMedia('(display-mode: standalone)').matches) showCard('chrome-done');
+      else if (isChrome) showCard('chrome-install');
+      else {
+        document.getElementById('where').textContent = inApp
+          ? 'Návod máte otevřený uvnitř jiné aplikace (WhatsApp, Messenger, e-mail…). Odtud instalace nejde.'
+          : 'Návod máte otevřený v jiném prohlížeči než Chrome. Aplikace se instaluje z Chromu.';
+        // intent:// otevře stejnou stránku v Chrome; když v telefonu Chrome není, nabídne ho Google Play
+        const noChrome = 'https://play.google.com/store/apps/details?id=com.android.chrome';
+        document.getElementById('open-chrome').href = `intent://${location.host}${location.pathname}${location.search}`
+          + `#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(noChrome)};end`;
+        showCard('chrome-open');
+      }
+    } else if (inApp) {
       document.getElementById('in-app').hidden = false;
     }
+    document.getElementById('copy-link').addEventListener('click', async (e) => {
+      const btn = e.currentTarget;
+      try {
+        await navigator.clipboard.writeText(location.href);
+        btn.textContent = 'odkaz je zkopírovaný';
+      } catch {
+        prompt('Zkopírujte odkaz a vložte ho do Chromu:', location.href);
+      }
+    });
 
-    // Android: Chrome nabídne instalaci přímo z této stránky
+    // Android: Chrome nabídne instalaci přímo z této stránky (tlačítko nahoře i v kroku 2)
     let installEvent = null;
-    const installBtn = document.getElementById('install');
+    const installBtns = [document.getElementById('install-now'), document.getElementById('install')];
+    const installManual = document.getElementById('install-manual');
     addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       installEvent = e;
-      installBtn.hidden = false;
+      installBtns.forEach((b) => { b.hidden = false; });
+      installManual.hidden = true;
     });
-    installBtn.addEventListener('click', async () => {
+    async function install() {
       if (!installEvent) return;
       installEvent.prompt();
-      await installEvent.userChoice;
+      const { outcome } = await installEvent.userChoice;
       installEvent = null;
-      installBtn.hidden = true;
-    });
+      installBtns.forEach((b) => { b.hidden = true; });
+      if (outcome !== 'accepted') installManual.hidden = false;
+    }
+    installBtns.forEach((b) => b.addEventListener('click', install));
+    addEventListener('appinstalled', () => { if (isAndroid) showCard('chrome-done'); });
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
   </script>
 </body>
