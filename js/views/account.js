@@ -2,6 +2,7 @@
 
 import { html, useEffect, useState } from '../../vendor/preact-htm.js';
 import { DEFAULT_PASSWORD, ROLES, can } from '../model.js';
+import { APP_VERSION } from '../version.js';
 import {
   Empty, ErrorBox, Icon, InstallOffer, Loading, TopBar, enablePush, isIos, isStandalone, setPushOff, useApp, useLoad,
 } from '../ui.js';
@@ -322,17 +323,21 @@ function ChangePassword() {
     </section>`;
 }
 
-// Verze aplikace = verze, kterou má telefon opravdu načtenou (zeptá se service workeru, sw.js → CACHE)
+// Verze aplikace = verze, která právě běží (APP_VERSION). Service worker může mít na pozadí staženou novější
+// (sw.js → CACHE) – ta se použije až po načtení znovu, proto se v tu chvíli nabídne tlačítko.
 function AppVersion() {
-  const [v, setV] = useState('');
+  const [downloaded, setDownloaded] = useState(0);
   useEffect(() => {
     const sw = navigator.serviceWorker?.controller;
     if (!sw) return;
     const ch = new MessageChannel();
-    ch.port1.onmessage = (e) => setV(String(e.data ?? '').replace(/^zavady-v/, ''));
+    ch.port1.onmessage = (e) => setDownloaded(Number(String(e.data ?? '').replace(/^zavady-v/, '')) || 0);
     sw.postMessage({ type: 'version' }, [ch.port2]);
   }, []);
-  return v ? html`<p class="muted small app-version">Verze aplikace ${v}</p>` : null;
+  return html`
+    <p class="muted small app-version">Verze aplikace ${APP_VERSION}
+      ${downloaded > APP_VERSION && html` · stažená je novější verze ${downloaded}
+        <button type="button" class="link-btn" onClick=${() => location.reload()}>Načíst</button>`}</p>`;
 }
 
 function CreateUserForm({ onCreated, onCancel }) {

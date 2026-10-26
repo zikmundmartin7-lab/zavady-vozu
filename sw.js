@@ -1,13 +1,13 @@
 // Service worker: rychlé spuštění z paměti telefonu, offline záloha a push upozornění na nové závady.
 
-const CACHE = 'zavady-v31';
+const CACHE = 'zavady-v32'; // zvýšit spolu s APP_VERSION v js/version.js
 const PHOTO_CACHE = 'zavady-foto'; // fotky závad a obrázky katalogu (přežije novou verzi aplikace)
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/config.js', 'js/model.js', 'js/codes.js', 'js/ui.js', 'js/api/index.js', 'js/api/demo.js', 'js/api/supabase.js',
   'js/views/account.js', 'js/views/codes.js', 'js/views/defect.js', 'js/views/form.js', 'js/views/groups.js',
   'js/views/regulations.js', 'js/views/wagon.js', 'js/views/admin.js', 'js/views/overview.js',
-  'js/outbox.js', 'js/history.js', 'js/xlsx.js', 'js/offline.js',
+  'js/outbox.js', 'js/history.js', 'js/xlsx.js', 'js/offline.js', 'js/version.js',
   'vendor/preact-htm.js', 'vendor/supabase.js', 'icons/icon.svg?v=2', 'icons/icon-192.png?v=2', 'icons/badge-96.png?v=2',
 ];
 

@@ -100,6 +100,7 @@ index.html, manifest.webmanifest, sw.js   stránka, instalace na plochu, offline
 css/app.css                               vzhled
 js/config.js                              připojení k Supabase (prázdné = ukázkový režim)
 js/model.js                               čísla vozů, kontrolní číslice, hledání, role
+js/version.js                             číslo verze aplikace (zvyšuje se spolu s CACHE v sw.js)
 js/api/supabase.js | demo.js              ostrá data | ukázková data v prohlížeči
 js/ui.js, js/views/*.js                   obrazovky (Preact + htm, bez sestavování)
 supabase/schema.sql                       tabulky, oprávnění (RLS), úložiště
