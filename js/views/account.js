@@ -3,7 +3,7 @@
 import { html, useEffect, useState } from '../../vendor/preact-htm.js';
 import { DEFAULT_PASSWORD, ROLES, can } from '../model.js';
 import {
-  Empty, ErrorBox, Icon, Loading, TopBar, enablePush, isIos, isStandalone, setPushOff, useApp, useLoad,
+  Empty, ErrorBox, Icon, InstallOffer, Loading, TopBar, enablePush, isIos, isStandalone, setPushOff, useApp, useLoad,
 } from '../ui.js';
 
 function DemoLogin() {
@@ -134,6 +134,7 @@ export function LoginView() {
           <b>Odkaz vede na závadu v aplikaci Závady vozů.</b> Zobrazí se po přihlášení.
           ${!standalone && html`<div class="small">Máte aplikaci na ploše? Otevřete ji z ikony – tam už jste přihlášení.</div>`}
         </div>`}
+      <${InstallOffer} />
       ${api.mode === 'demo' ? html`<${DemoLogin} />` : html`<${RealLogin} />`}
       <a class="install-link" href="navod.html">Jak nainstalovat aplikaci do telefonu?</a>
     </main>`;
@@ -153,6 +154,7 @@ export function PendingView() {
           <button class="btn" onClick=${() => api.signOut()}>Odhlásit</button>
         </div>
       </div>
+      <${InstallOffer} />
     </main>`;
 }
 
@@ -182,7 +184,7 @@ export function RecoveryView({ onDone }) {
 }
 
 export function AccountView() {
-  const { api, me, toast, reloadMe, installPrompt } = useApp();
+  const { api, me, toast, reloadMe, installPrompt, install } = useApp();
   const [name, setName] = useState(me.full_name);
   const [push, setPush] = useState('off');
   const [busy, setBusy] = useState(false);
@@ -252,7 +254,7 @@ export function AccountView() {
         <section class="card">
           <h2>Aplikace na plochu</h2>
           <p class="muted">Nainstalujte si aplikaci – poběží jako samostatná aplikace s ikonou.</p>
-          <button class="btn btn-primary" onClick=${() => installPrompt.prompt()}>Nainstalovat</button>
+          <button class="btn btn-primary" onClick=${install}>Nainstalovat</button>
         </section>`}
 
       ${can.admin(me) && html`
