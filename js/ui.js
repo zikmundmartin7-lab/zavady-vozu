@@ -241,16 +241,21 @@ export function TopBar({ title, back, children, sub }) {
 export const Fab = ({ href, label = 'Nová závada' }) => html`
   <a class="fab" href=${href}><${Icon} name="plus" size=${22} /> ${label}</a>`;
 
-// Vpravo v horní liště: nové komentáře (bublina s červeným počtem) a účet
-export function UserButton() {
-  const { me, pendingUsers: pending, commentInbox } = useApp();
+// Kulaté tlačítko nad „Nová závada“ (pevně na místě i při posunu stránky): nové komentáře s červeným počtem
+export function CommentsFab() {
+  const { commentInbox } = useApp();
   const unread = (commentInbox ?? []).reduce((n, r) => n + r.unread, 0);
   return html`
-    <a class="icon-btn topbar-comments" href="#/komentare"
+    <a class="fab-comments" href="#/komentare"
       aria-label=${unread ? plural(unread, 'nový komentář', 'nové komentáře', 'nových komentářů') : 'Komentáře'}>
-      <${Icon} name="chat" size=${24} />
+      <${Icon} name="chat" size=${26} />
       ${unread > 0 && html`<span class="nav-badge">${unread > 99 ? '99+' : unread}</span>`}
-    </a>
+    </a>`;
+}
+
+export function UserButton() {
+  const { me, pendingUsers: pending } = useApp();
+  return html`
     <a class="avatar" href="#/ucet" aria-label="Můj účet" title=${me?.full_name}>
       ${(me?.full_name || '?').split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase()}
       ${pending > 0 && html`<span class="dot" title="Noví uživatelé čekají na schválení"></span>`}
@@ -664,6 +669,51 @@ export function PullToRefresh({ onRefresh }) {
         ? html`<span class="spinner"></span> Obnovuji…`
         : html`<${Icon} name="down" class=${ready ? 'flip' : ''} /> ${ready ? 'Pusťte pro obnovení' : 'Táhněte dolů'}`}
     </div>`;
+}
+
+// ───── Nová verze aplikace ─────
+
+/** Verze, kterou má service worker stažená (sw.js → CACHE 'zavady-vNN'); 0 = nevíme. */
+export function swVersion(worker = navigator.serviceWorker?.controller) {
+  if (!worker) return Promise.resolve(0);
+  return new Promise((resolve) => {
+    const ch = new MessageChannel();
+    ch.port1.onmessage = (e) => resolve(Number(String(e.data ?? '').replace(/^zavady-v/, '')) || 0);
+    worker.postMessage({ type: 'version' }, [ch.port2]);
+    setTimeout(() => resolve(0), 3000);
+  });
+}
+
+/**
+ * Aktualizace bez zavírání aplikace: zeptá se webu na novou verzi, počká, až se stáhne, a aplikaci
+ * načte znovu. Vrací 'reload' (načítá se nová verze), 'latest' (novější není), 'offline' nebo 'error'.
+ */
+export async function updateApp(current) {
+  if (!navigator.onLine) return 'offline';
+  const reg = await navigator.serviceWorker?.getRegistration();
+  if (!reg) return 'latest';
+  try {
+    await reg.update();
+    const sw = reg.installing ?? reg.waiting;
+    if (sw) {
+      await new Promise((resolve, reject) => {
+        const check = () => {
+          if (sw.state === 'activated') resolve();
+          else if (sw.state === 'redundant') reject(new Error('Stažení nové verze selhalo.'));
+        };
+        sw.addEventListener('statechange', check);
+        check();
+        setTimeout(() => reject(new Error('Stažení nové verze trvá příliš dlouho.')), 60000);
+      });
+    }
+  } catch {
+    return 'error';
+  }
+  if ((await swVersion(reg.active)) > current) {
+    location.reload();
+    return 'reload';
+  }
+  return 'latest';
 }
 
 // ───── Prohlížeč fotek a videí ─────

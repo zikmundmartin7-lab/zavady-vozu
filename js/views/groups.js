@@ -3,7 +3,7 @@
 import { html, useState } from '../../vendor/preact-htm.js';
 import { plural } from '../model.js';
 import {
-  Badge, BottomNav, Empty, ErrorBox, Fab, GroupName, Icon, InstallOffer, Loading, NewBadge, OpenCount, OutboxBanner, PushOffer, TopBar,
+  Badge, BottomNav, CommentsFab, Empty, ErrorBox, Fab, GroupName, Icon, InstallOffer, Loading, NewBadge, OpenCount, OutboxBanner, PushOffer, TopBar,
   UserButton, WagonNumber, WagonSearch, useApp, useLoad,
 } from '../ui.js';
 
@@ -33,6 +33,7 @@ export function HomeView() {
             </a>`)}
         </nav>`}
     </main>
+    <${CommentsFab} />
     <${Fab} href="#/nova" />
     <${BottomNav} active="vozy" />`;
 }
@@ -87,6 +88,7 @@ export function GroupView({ id }) {
             </button>
             ${showAll && html`<${WagonList} wagons=${others} />`}`}`}`}
     </main>
+    <${CommentsFab} />
     <${Fab} href="#/nova?skupina=${id}" />
     <${BottomNav} active="vozy" />`;
 }
