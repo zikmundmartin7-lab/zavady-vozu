@@ -41,12 +41,8 @@ let state = load();
 function load() {
   try {
     const s = JSON.parse(localStorage.getItem(KEY));
-    if (s?.version === 2) {
-      // starší uložená ukázka: nové závady počítat až od teď
-      const since = new Date().toISOString();
-      s.profiles.forEach((p) => { p.news_since ??= since; });
-      return { audit: [], schedules: [], seen: {}, commentSeen: {}, ...s };
-    }
+    // uložená ukázka; starší (verze 2, bez čerstvých závad na předvádění) se nahradí novou
+    if (s?.version === 3) return s;
   } catch { /* poškozená data → nová ukázka */ }
   const s = seed();
   persist(s);
@@ -665,8 +661,40 @@ function seed() {
       }
     }
   }
+  // Čerstvé závady a komentáře za poslední dva dny na předvádění: odznaky nových závad u skupin, vozů
+  // i Přehledu, tučné řádky a bublina nových komentářů. Každý vidí jako nové jen to, co přidali ostatní.
+  // [před kolika hodinami, skupina, kdo, popis, kód, [[kdo, komentář, za kolik minut], …]]
+  const fresh = [
+    [0.4, 4, 'u-uzivatel', 'Ploché místo na kole, 2. dvojkolí – při jízdě klepe.', '1.1.1',
+      [['u-opravar', 'Beru to, podívám se na to po obědě.', 15]]],
+    [1.5, 1, 'u-opravar', 'Brzdové špalíky opotřebené pod limit, obě strany.', '3.1.1', []],
+    [3, 2, 'u-uzivatel', 'Výsypná klapka nejde uzavřít, chybí zajištění klapky.', '6.10.1', []],
+    [5, 6, 'u-spravce', 'Nefunkční ruční brzda – kolo se neotáčí.', '3.2',
+      [['u-uzivatel', 'Můžeš poslat ještě fotku z druhé strany?', 30], ['u-opravar', 'Díl je objednaný, měl by dorazit ve čtvrtek.', 90]]],
+    [8, 5, 'u-uzivatel', 'Poškozený nárazník, prasklé pouzdro vpravo.', '5.1', []],
+    [20, 3, 'u-opravar', 'Vylomená podlahová deska u čela vozu.', '6.1', [['u-spravce', 'Vůz odstaven na 12. koleji.', 60]]],
+    [26, 4, 'u-uzivatel', 'Trhlina na kole, 1. dvojkolí – nutné vyřadit.', '1.1.2', [['u-spravce', 'Nahlášeno dispečinku.', 20]]],
+    [30, 1, 'u-spravce', 'Netěsná hadice brzdového potrubí.', null, [['u-opravar', 'Beru to, zítra ráno vyměním.', 120]]],
+    [40, 7, 'u-uzivatel', 'Ohnuté madlo posunovače, levá strana.', null, []],
+    [46, 2, 'u-opravar', 'Prasklý svar na čelníku.', null, []],
+  ];
+  const used = new Set();
+  for (const [hours, group, by, description, code, talk] of fresh) {
+    const free = wagons.filter((w) => w.group_id === group && !used.has(w.id));
+    const w = free[Math.floor(rnd() * free.length)];
+    used.add(w.id);
+    const created = new Date(now - hours * 36e5).toISOString();
+    const d = {
+      id: uid(), wagon_id: w.id, description, defect_code: code, found_at: created, created_by: by,
+      created_at: created, updated_at: null, resolved_at: null, resolved_by: null, resolution_note: null,
+    };
+    defects.push(d);
+    for (const [author, body, min] of talk) {
+      comments.push({ id: uid(), defect_id: d.id, author_id: author, body, created_at: new Date(Date.parse(created) + min * 6e4).toISOString() });
+    }
+  }
   // Nové závady (odznak „nové“) se v ukázce počítají za poslední 3 dny
   const since = new Date(now - 3 * 864e5).toISOString();
   profiles.forEach((p) => { p.news_since = since; });
-  return { version: 2, profiles, wagons, defects, attachments: [], comments, audit: [], schedules: [], seen: {}, commentSeen: {} };
+  return { version: 3, profiles, wagons, defects, attachments: [], comments, audit: [], schedules: [], seen: {}, commentSeen: {} };
 }

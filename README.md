@@ -36,7 +36,7 @@ První registrovaný uživatel se automaticky stane správcem. Další čekají 
 
 ## Vyzkoušení (ukázkový režim)
 
-Dokud v `js/config.js` není vyplněné Supabase, aplikace běží v **ukázkovém režimu** s vymyšlenými daty uloženými jen v prohlížeči. Ukázkový režim se dá kdykoli zapnout i přidáním `?demo` k adrese (např. `…/zavady-vozu/?demo`), na ostrá data to nesahá. Spuštění:
+Dokud v `js/config.js` není vyplněné Supabase, aplikace běží v **ukázkovém režimu** s vymyšlenými daty uloženými jen v prohlížeči. Ukázkový režim se dá kdykoli zapnout i přidáním `?demo` k adrese (např. `…/zavady-vozu/?demo`), na ostrá data to nesahá. Na předvádění obsahuje i deset čerstvých závad a komentářů z posledních dvou dnů (odznaky nových závad, tučné řádky v Přehledu, bublina nových komentářů). Spuštění:
 
 ```bash
 python3 -m http.server 8765
