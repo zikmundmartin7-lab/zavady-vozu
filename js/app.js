@@ -4,7 +4,8 @@ import { html, render, useCallback, useEffect, useState } from '../vendor/preact
 import { api } from './api/index.js';
 import { can, formatNumber } from './model.js';
 import {
-  AppCtx, Lightbox, Loading, PullToRefresh, ShareDialog, Toasts, clearLocalCache, isPushOff, readCached, writeCached,
+  AppCtx, Lightbox, Loading, PullToRefresh, ShareDialog, Toasts, clearLocalCache, isPushOff, readCached, reloadApp,
+  writeCached,
 } from './ui.js';
 import { lastPrefetchAt, prefetchAll } from './offline.js';
 import { AccountView, LoginView, PendingView, RecoveryView, UsersView } from './views/account.js';
@@ -255,7 +256,7 @@ function App() {
   // Nová verze aplikace (service worker ji stáhl na pozadí) → nabídnout načtení
   useEffect(() => {
     const onUpdate = () => toast('Klepněte sem pro načtení nové verze.', {
-      title: 'Je k dispozici nová verze aplikace', action: () => location.reload(), sticky: true,
+      title: 'Je k dispozici nová verze aplikace', action: reloadApp, sticky: true,
     });
     addEventListener('app-updated', onUpdate);
     return () => removeEventListener('app-updated', onUpdate);
