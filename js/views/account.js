@@ -4,7 +4,8 @@ import { html, useEffect, useState } from '../../vendor/preact-htm.js';
 import { DEFAULT_PASSWORD, ROLES, can, plural } from '../model.js';
 import { APP_VERSION } from '../version.js';
 import {
-  Empty, ErrorBox, Icon, InstallOffer, Loading, TopBar, enablePush, isIos, isStandalone, setPushOff, useApp, useLoad,
+  Empty, ErrorBox, Icon, InstallOffer, Loading, PasswordInput, TopBar, enablePush, isIos, isStandalone, setPushOff,
+  useApp, useLoad,
 } from '../ui.js';
 
 function DemoLogin() {
@@ -99,9 +100,8 @@ function RealLogin() {
         <input type="email" autocomplete="email" value=${email} onInput=${(e) => setEmail(e.currentTarget.value)} required /></label>
       ${tab !== 'reset' && html`
         <label class="field">Heslo${tab === 'register' ? ' (aspoň 6 znaků)' : ''}
-          <input type=${tab === 'register' ? 'text' : 'password'} autocomplete=${tab === 'login' ? 'current-password' : 'new-password'}
-            autocapitalize="off" spellcheck="false" minlength="6"
-            value=${password} onInput=${(e) => setPassword(e.currentTarget.value)} required /></label>`}
+          <${PasswordInput} key=${tab} visible=${tab === 'register'} autocomplete=${tab === 'login' ? 'current-password' : 'new-password'}
+            minlength="6" value=${password} onInput=${(e) => setPassword(e.currentTarget.value)} required /></label>`}
       <${ErrorBox} error=${error} />
       ${hint === 'register' && html`
         <div class="first-time-hint">
@@ -176,7 +176,7 @@ export function RecoveryView({ onDone }) {
       <form class="card form" onSubmit=${submit}>
         <h2>Nové heslo</h2>
         <label class="field">Nové heslo
-          <input type="password" autocomplete="new-password" minlength="6" value=${password}
+          <${PasswordInput} autocomplete="new-password" minlength="6" value=${password}
             onInput=${(e) => setPassword(e.currentTarget.value)} required /></label>
         <${ErrorBox} error=${error} />
         <button class="btn btn-primary block big-btn">Uložit heslo</button>
@@ -331,7 +331,7 @@ function ChangePassword() {
           <form class="form" onSubmit=${submit}>
             <input type="email" autocomplete="username" value=${me.email} readonly hidden />
             <label class="field">Nové heslo (aspoň 6 znaků)
-              <input type="password" autocomplete="new-password" minlength="6" value=${password}
+              <${PasswordInput} autocomplete="new-password" minlength="6" value=${password}
                 onInput=${(e) => setPassword(e.currentTarget.value)} required /></label>
             <p class="hint">Na ostatních zařízeních se pak přihlásíte novým heslem.</p>
             <${ErrorBox} error=${error} />
@@ -397,7 +397,7 @@ function CreateUserForm({ onCreated, onCancel }) {
           ${Object.entries(ROLES).filter(([k]) => k !== 'pending').map(([k, v]) => html`<option value=${k}>${v}</option>`)}
         </select></label>
       <label class="field">Heslo (aspoň 6 znaků, můžete přepsat)
-        <input autocomplete="off" autocapitalize="off" spellcheck="false" minlength="6" value=${password}
+        <${PasswordInput} visible autocomplete="off" minlength="6" value=${password}
           onInput=${(e) => setPassword(e.currentTarget.value)} required /></label>
       <${ErrorBox} error=${error} />
       <div class="row">

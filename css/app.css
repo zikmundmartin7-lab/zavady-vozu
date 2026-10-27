@@ -585,6 +585,11 @@ button.code-item:hover { border-color: var(--primary); }
 .check-row input { width: 20px; height: 20px; accent-color: var(--primary); }
 .btn-whatsapp { background: #1a8d4b; border-color: #1a8d4b; color: #fff; }
 fieldset.field { border: 0; padding: 0; margin: 0 0 .6rem; min-width: 0; }
+
+/* Pole pro heslo s okem (zobrazit / skrýt znaky hesla) */
+.password-field { position: relative; display: block; }
+.field .password-field input { padding-right: 2.9rem; }
+.password-field .password-toggle { position: absolute; right: 2px; top: .3rem; bottom: .5rem; height: auto; color: var(--muted); }
 fieldset.field legend { padding: 0; }
 fieldset.field .check-row { margin: .45rem 0; color: var(--text); font-weight: 500; }
 
