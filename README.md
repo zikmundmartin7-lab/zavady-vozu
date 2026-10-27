@@ -66,7 +66,7 @@ Data se ukládají v [Supabase](https://supabase.com): databázi, přihlašován
 
 ## Instalace na Android
 
-Návod pro kolegy pro Android i iPhone (stránka s QR kódem): <https://zikmundmartin7-lab.github.io/zavady-vozu/navod.html>. Odkaz je i na přihlašovací obrazovce. Na Androidu návod pozná, že je otevřený mimo Chrome (WhatsApp, Messenger, Samsung Internet…), a nabídne tlačítko **Otevřít v Chrome** (odkaz `intent://`); v Chrome rovnou ukáže **Instalovat aplikaci**.
+Návod pro kolegy pro Android i iPhone (stránka s QR kódem): <https://zikmundmartin7-lab.github.io/zavady-vozu/navod.html>. Odkaz je i na přihlašovací obrazovce. Na Androidu návod pozná, že je otevřený mimo Chrome (WhatsApp, Messenger, Samsung Internet…), a nabídne tlačítko **Otevřít v Chrome** (odkaz `intent://`); v Chrome rovnou ukáže **Instalovat aplikaci**. Na Androidu je nad kroky i **videonávod** (45 s, bez zvuku: odkaz ve WhatsAppu → Chrome → instalace → registrace → upozornění) – `video/navod-android.mp4` s náhledem `video/navod-android.jpg`. Service worker videa neukládá (přehrávají se po částech přímo ze sítě). Nové video: převést na H.264 bez zvuku s `-movflags +faststart` a v `navod.html` zvýšit `?v=` u videa i náhledu.
 
 **iPhone / iPad (iOS 16.4+):** Safari → Sdílet → Přidat na plochu. Upozornění fungují jen v aplikaci spuštěné z ikony na ploše.
 

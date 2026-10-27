@@ -69,11 +69,31 @@
     .chrome-card .big-btn { margin: .6rem 0; }
     .link-btn.inline { padding: 0; font: inherit; color: var(--primary); text-decoration: underline; }
 
+    /* Videonávod: video z telefonu na výšku, ať se vejde na obrazovku bez posouvání */
+    .video-card h2 { font-size: 1.1rem; margin: 0 0 .2rem; }
+    .video-card p { margin: 0 0 .7rem; }
+    .video-card video {
+      display: block; margin: 0 auto; width: auto; max-width: 100%; height: auto; max-height: 75vh;
+      aspect-ratio: 478 / 850; border-radius: 12px; background: #000; border: 1px solid var(--border);
+    }
+    .video-wrap { position: relative; width: fit-content; max-width: 100%; margin: 0 auto; }
+    .play-overlay {
+      position: absolute; inset: 0; border: 0; border-radius: 12px; cursor: pointer;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+      background: rgba(15, 25, 40, .72); color: #fff; font: inherit;
+    }
+    .play-overlay[hidden] { display: none; }
+    .play-btn {
+      width: 76px; height: 76px; border-radius: 50%; display: grid; place-items: center;
+      background: var(--primary); box-shadow: 0 4px 18px rgba(0, 0, 0, .35); padding-left: 4px;
+    }
+    .play-label { font-weight: 700; font-size: 1.05rem; padding: .35rem .9rem; border-radius: 999px; background: rgba(0, 0, 0, .55); }
+
     .qr-card { display: none; text-align: center; }
     .qr-card img { width: 220px; height: 220px; background: #fff; padding: 8px; border-radius: 12px; border: 1px solid var(--border); }
     @media (min-width: 700px) { .qr-card { display: block; } }
     @media print {
-      .topbar, .hero .btn, #install, .in-app, .chrome-card, .os-switch { display: none !important; }
+      .topbar, .hero .btn, #install, .in-app, .chrome-card, .os-switch, .video-card { display: none !important; }
       .qr-card { display: block; }
       .card { box-shadow: none; border: 1px solid var(--border); break-inside: avoid; }
     }
@@ -135,6 +155,23 @@
         Zvolte <b>Otevřít v Safari</b> (ikona kompasu nebo nabídka <span class="key">⋯</span>).
       </div>
     </div>
+
+    <!-- ───── Android: videonávod (celý postup od odkazu ve WhatsAppu po upozornění, bez zvuku) ───── -->
+    <section class="card video-card" data-os="android">
+      <h2>Videonávod – Android</h2>
+      <p class="muted small">Celý postup za 45 sekund: od odkazu ve WhatsAppu přes instalaci a registraci po zapnutí upozornění. Video je bez zvuku.</p>
+      <div class="video-wrap">
+        <video id="video-navod" controls playsinline preload="none" poster="video/navod-android.jpg?v=1" width="478" height="850">
+          <source src="video/navod-android.mp4?v=1" type="video/mp4" />
+          Video se nedá přehrát – postup je popsaný v krocích níže.
+        </video>
+        <!-- Náhled vypadá jako tato stránka – výrazné tlačítko, ať je jasné, že jde o video -->
+        <button type="button" class="play-overlay" id="video-play" aria-label="Přehrát videonávod">
+          <span class="play-btn"><svg width="34" height="34" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor"/></svg></span>
+          <span class="play-label">Přehrát video (45 s)</span>
+        </button>
+      </div>
+    </section>
 
     <!-- ───── Android: kroky 1–3 ───── -->
     <ol class="steps" data-os="android">
@@ -390,6 +427,13 @@
         prompt('Zkopírujte odkaz a vložte ho do Chromu:', location.href);
       }
     });
+
+    // Videonávod: tlačítko přes náhled spustí video; při přehrávání zmizí, po skončení se vrátí
+    const video = document.getElementById('video-navod');
+    const playBtn = document.getElementById('video-play');
+    playBtn.addEventListener('click', () => { video.play().catch(() => { playBtn.hidden = true; }); });
+    video.addEventListener('play', () => { playBtn.hidden = true; });
+    video.addEventListener('ended', () => { playBtn.hidden = false; });
 
     // Android: Chrome nabídne instalaci přímo z této stránky (tlačítko nahoře i v kroku 2)
     let installEvent = null;

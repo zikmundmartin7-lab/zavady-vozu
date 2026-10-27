@@ -1,6 +1,6 @@
 // Service worker: rychlé spuštění z paměti telefonu, offline záloha a push upozornění na nové závady.
 
-const CACHE = 'zavady-v40'; // zvýšit spolu s APP_VERSION v js/version.js
+const CACHE = 'zavady-v41'; // zvýšit spolu s APP_VERSION v js/version.js
 const PHOTO_CACHE = 'zavady-foto'; // fotky závad a obrázky katalogu (přežije novou verzi aplikace)
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
@@ -70,6 +70,8 @@ self.addEventListener('fetch', (e) => {
     return;
   }
   if (url.origin !== location.origin) return;
+  // Videonávod: přehrává se po částech (Range), iPhone jinak video z paměti nespustí – vždy rovnou ze sítě
+  if (e.request.headers.has('range') || /\/video\/[^/]+\.mp4$/.test(url.pathname)) return;
   // Návod k instalaci: vždy nejdřív ze sítě (ověří se i proti paměti prohlížeče), ať je hned vidět nová verze;
   // bez signálu z paměti telefonu. Otevírá se zřídka a skoro vždy se signálem, rychlý start tu nehraje roli.
   if (url.pathname.endsWith('/navod.html')) {
