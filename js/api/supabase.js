@@ -407,6 +407,16 @@ export const api = {
   },
 
   // Komentáře
+  // Nové komentáře od ostatních u závad, které jsem zapsal nebo komentoval (pohled comment_inbox, migrace 07):
+  // [{ defect_id, wagon_id, number, description, unread, last_at, last_body, last_author }]
+  async listCommentInbox() {
+    const rows = check(await sb.from('comment_inbox').select('*').order('last_at', { ascending: false }));
+    return rows.map((r) => ({ ...r, unread: Number(r.unread) }));
+  },
+  // Otevření komentářů závady = jsou přečtené
+  async markCommentsSeen(defectId) {
+    check(await sb.rpc('mark_comments_seen', { p_defect: defectId }));
+  },
   async listComments(defectId) {
     return check(await sb.from('comment_feed').select('*').eq('defect_id', defectId).order('created_at'));
   },

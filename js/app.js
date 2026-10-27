@@ -8,7 +8,7 @@ import {
 } from './ui.js';
 import { lastPrefetchAt, prefetchAll } from './offline.js';
 import { AccountView, LoginView, PendingView, RecoveryView, UsersView } from './views/account.js';
-import { DefectView } from './views/defect.js';
+import { CommentInboxView, DefectView } from './views/defect.js';
 import { syncOutbox } from './outbox.js';
 import { AuditView, ExportsView, TrashView } from './views/admin.js';
 import { CodesView } from './views/codes.js';
@@ -54,6 +54,7 @@ function Page({ route }) {
     case 'skupina': return html`<${GroupView} id=${Number(route.id)} />`;
     case 'vuz': return html`<${WagonView} id=${route.id} />`;
     case 'zavada': return html`<${DefectView} id=${route.id} />`;
+    case 'komentare': return html`<${CommentInboxView} />`;
     case 'nova': return html`<${DefectFormView} params=${route.params} />`;
     case 'upravit': return html`<${DefectFormView} editId=${route.id} params=${route.params} />`;
     case 'kody': return html`<${CodesView} params=${route.params} />`;
@@ -124,6 +125,9 @@ function App() {
   const [pendingUsers, setPendingUsers] = useState(0);
   const [newDefects, setNewDefects] = useState(() => countNew(readCached(api.mode, 'groups')));
   const [seenWagons, setSeenWagons] = useState(() => new Map()); // vůz → kdy ho uživatel otevřel (v této relaci)
+  // Nové komentáře u mých závad a závad, které jsem komentoval (odznak s číslem nahoře, seznam #/komentare)
+  const [commentInbox, setCommentInbox] = useState(() => readCached(api.mode, 'comment-inbox') ?? []);
+  const [inboxTick, setInboxTick] = useState(0);
 
   const reloadMe = () => api.getProfile().then(
     (p) => { setMe(p); saveMe(p); },
@@ -172,6 +176,13 @@ function App() {
     if (!can.use(me)) { setNewDefects(0); return; }
     api.listGroups().then((g) => { writeCached(api.mode, 'groups', g); setNewDefects(countNew(g)); }, () => {});
   }, [me?.id, me?.role, version, seenWagons]);
+
+  // Nové komentáře: při spuštění, při živé změně (nový komentář) a po přečtení. Bez úpravy databáze
+  // (migrace 07) se jen nic neukáže.
+  useEffect(() => {
+    if (!can.use(me)) { setCommentInbox([]); return; }
+    api.listCommentInbox().then((rows) => { writeCached(api.mode, 'comment-inbox', rows); setCommentInbox(rows); }, () => {});
+  }, [me?.id, me?.role, version, inboxTick]);
 
   // Upozornění: když je telefon už dřív povolil (nové přihlášení, přeinstalace), obnovit je bez ptaní.
   // Ručně vypnutá (Můj účet) ne.
@@ -284,7 +295,12 @@ function App() {
     openMedia: (items, index) => setMedia({ items, index }),
     share: (id, opts = {}) => setSharing({ id, ...opts }),
     resetTab: () => { setTabReset((n) => n + 1); scrollTo(0, 0); },
-    pendingUsers, newDefects, seenWagons,
+    pendingUsers, newDefects, seenWagons, commentInbox,
+    // Komentáře závady jsou přečtené (otevřená závada) – hned zmizí z odznaku, databáze se dozví na pozadí
+    commentsSeen: (defectId) => {
+      setCommentInbox((rows) => rows.filter((r) => r.defect_id !== defectId));
+      return api.markCommentsSeen(defectId).catch(() => {}).finally(() => setInboxTick((n) => n + 1));
+    },
     wagonSeen: (id) => setSeenWagons((m) => new Map(m).set(id, Date.now())),
   };
 

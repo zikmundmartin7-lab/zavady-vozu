@@ -112,6 +112,8 @@ const ICONS = {
   cloud: 'M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 9.5a4 4 0 0 1-.5 7.97zM12 11v6M9.5 14.5 12 17l2.5-2.5',
   share: `${circle(18, 5, 3)}${circle(6, 12, 3)}${circle(18, 19, 3)}M8.6 13.5l6.8 4M15.4 6.5l-6.8 4`,
   'ios-share': 'M12 3v12M8 7l4-4 4 4M5 11v9h14v-9',
+  eye: `M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z${circle(12, 12, 3)}`,
+  'eye-off': 'M3 3l18 18M10.6 5.1A10.4 10.4 0 0 1 12 5c6.5 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.2M6.6 6.6C3.9 8.3 2 12 2 12s3.5 7 10 7c1.9 0 3.6-.6 5-1.4M9.9 9.9a3 3 0 0 0 4.2 4.2',
 };
 export const Icon = ({ name, size = 20, class: cls = '' }) => html`
   <svg class="icon ${cls}" width=${size} height=${size} viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -125,6 +127,21 @@ export const Badge = ({ n, class: cls = '' }) =>
 // Počet závad, které uživatel ještě neviděl (od jeho poslední návštěvy vozu)
 export const NewBadge = ({ n, class: cls = '' }) =>
   n > 0 ? html`<span class="new-badge ${cls}" aria-label=${plural(n, 'nová závada', 'nové závady', 'nových závad')}>${plural(n > 99 ? 99 : n, 'nová', 'nové', 'nových')}</span>` : null;
+
+/** Pole pro heslo s okem: klepnutím se tečky změní na znaky hesla a zpět. visible = na začátku zobrazené. */
+export function PasswordInput({ value, onInput, visible = false, ...props }) {
+  const [shown, setShown] = useState(visible);
+  return html`
+    <span class="password-field">
+      <input ...${props} type=${shown ? 'text' : 'password'} autocapitalize="off" spellcheck="false"
+        value=${value} onInput=${onInput} />
+      <button type="button" class="icon-btn password-toggle" aria-pressed=${shown}
+        aria-label=${shown ? 'Skrýt heslo' : 'Zobrazit heslo'} title=${shown ? 'Skrýt heslo' : 'Zobrazit heslo'}
+        onMouseDown=${(e) => e.preventDefault()} onClick=${() => setShown(!shown)}>
+        <${Icon} name=${shown ? 'eye-off' : 'eye'} />
+      </button>
+    </span>`;
+}
 
 export const WagonNumber = ({ number, class: cls = '' }) => {
   const [head, tail] = splitNumber(number);
@@ -224,9 +241,16 @@ export function TopBar({ title, back, children, sub }) {
 export const Fab = ({ href, label = 'Nová závada' }) => html`
   <a class="fab" href=${href}><${Icon} name="plus" size=${22} /> ${label}</a>`;
 
+// Vpravo v horní liště: nové komentáře (bublina s červeným počtem) a účet
 export function UserButton() {
-  const { me, pendingUsers: pending } = useApp();
+  const { me, pendingUsers: pending, commentInbox } = useApp();
+  const unread = (commentInbox ?? []).reduce((n, r) => n + r.unread, 0);
   return html`
+    <a class="icon-btn topbar-comments" href="#/komentare"
+      aria-label=${unread ? plural(unread, 'nový komentář', 'nové komentáře', 'nových komentářů') : 'Komentáře'}>
+      <${Icon} name="chat" size=${24} />
+      ${unread > 0 && html`<span class="nav-badge">${unread > 99 ? '99+' : unread}</span>`}
+    </a>
     <a class="avatar" href="#/ucet" aria-label="Můj účet" title=${me?.full_name}>
       ${(me?.full_name || '?').split(/\s+/).slice(0, 2).map((w) => w[0]).join('').toUpperCase()}
       ${pending > 0 && html`<span class="dot" title="Noví uživatelé čekají na schválení"></span>`}
@@ -317,7 +341,8 @@ export function WagonSearch({ groupId, onQuery }) {
 // ───── Karta závady ─────
 
 export function DefectCard({ d, wagon = null, showComments = true, isNew = false }) {
-  const { api, me, refresh, toast, openMedia, share } = useApp();
+  const { api, me, refresh, toast, openMedia, share, commentInbox } = useApp();
+  const unreadComments = commentInbox?.find((r) => r.defect_id === d.id)?.unread ?? 0;
   const [resolving, setResolving] = useState(false);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
@@ -400,7 +425,8 @@ export function DefectCard({ d, wagon = null, showComments = true, isNew = false
       <div class="defect-actions">
         ${showComments && html`
           <a class="btn btn-ghost" href="#/zavada/${d.id}"><${Icon} name="chat" size=${18} />
-            ${d.comment_count ? plural(d.comment_count, 'komentář', 'komentáře', 'komentářů') : 'Komentovat'}</a>`}
+            ${d.comment_count ? plural(d.comment_count, 'komentář', 'komentáře', 'komentářů') : 'Komentovat'}
+            ${unreadComments > 0 && html`<span class="new-badge small">${plural(unreadComments, 'nový', 'nové', 'nových')}</span>`}</a>`}
         <button class="btn btn-whatsapp" title="Poslat do WhatsAppu" aria-label="Poslat závadu do WhatsAppu"
           onClick=${() => quickShare({
             d, w: wagon, catalog, openDialog: (prepared) => share(d.id, { prepared }), onShared: () => praise(toast),

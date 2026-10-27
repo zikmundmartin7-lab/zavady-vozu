@@ -1,10 +1,12 @@
-// Detail závady s komentáři ve stylu chatu (vlastní zprávy vpravo, ostatní vlevo).
+// Detail závady s komentáři ve stylu chatu (vlastní zprávy vpravo, ostatní vlevo) a seznam nových komentářů.
 
 import { html, useEffect, useRef, useState } from '../../vendor/preact-htm.js';
-import { can, formatDay, formatNumber, formatTime } from '../model.js';
+import { can, formatDay, formatNumber, formatTime, plural } from '../model.js';
 import { actorName, describe } from '../history.js';
 import { formatDateTime } from '../model.js';
-import { DefectCard, Empty, ErrorBox, Icon, Loading, TopBar, readCached, useApp, useLoad, writeCached } from '../ui.js';
+import {
+  BottomNav, DefectCard, Empty, ErrorBox, Icon, Loading, TopBar, WagonNumber, readCached, useApp, useLoad, writeCached,
+} from '../ui.js';
 
 // Historie změn závady (kdo, kdy, co) – rozbalí se tlačítkem
 function DefectHistory({ id }) {
@@ -34,7 +36,7 @@ function DefectHistory({ id }) {
 }
 
 export function DefectView({ id }) {
-  const { api, me, version, toast } = useApp();
+  const { api, me, version, toast, commentsSeen } = useApp();
   const defect = useLoad(() => api.getDefect(id), [id], `defect:${id}`);
   const d = defect.data;
   const wagon = useLoad(() => (d ? api.getWagon(d.wagon_id) : Promise.resolve(null)), [d?.wagon_id],
@@ -49,7 +51,8 @@ export function DefectView({ id }) {
   const reload = () => api.listComments(id).then((c) => { writeCached(api.mode, `comments:${id}`, c); setComments(c); },
     (e) => toast(e.message, { kind: 'error' }));
   useEffect(() => api.subscribeComments(id, reload), [id]);
-  useEffect(() => { reload(); }, [id, version]);
+  // Otevřená závada = její komentáře jsou přečtené (i ty, které přijdou, zatímco je otevřená)
+  useEffect(() => { reload(); commentsSeen(id); }, [id, version]);
   useEffect(() => {
     if (!comments?.length) return;
     endRef.current?.scrollIntoView({ behavior: firstLoad.current ? 'auto' : 'smooth', block: 'end' });
@@ -123,4 +126,34 @@ export function DefectView({ id }) {
         onKeyDown=${(e) => { if (e.key === 'Enter' && !e.shiftKey && matchMedia('(hover: hover)').matches) send(e); }}></textarea>
       <button class="send-btn" type="submit" disabled=${!text.trim() || sending} aria-label="Odeslat"><${Icon} name="send" /></button>
     </form>`;
+}
+
+// Nové komentáře od ostatních u závad, které jsem zapsal nebo komentoval (ikona bubliny nahoře)
+export function CommentInboxView() {
+  const { commentInbox, commentsSeen } = useApp();
+  const rows = commentInbox ?? [];
+  const total = rows.reduce((n, r) => n + r.unread, 0);
+  return html`
+    <${TopBar} back="#/" title="Nové komentáře" sub=${total ? plural(total, 'nový komentář', 'nové komentáře', 'nových komentářů') : ''} />
+    <main class="page with-nav">
+      ${!rows.length && html`<${Empty}>Žádné nové komentáře. Objeví se tu komentáře ostatních u závad,
+        které jste zapsali nebo komentovali.<//>`}
+      <div class="overview-list">
+        ${rows.map((r) => html`
+          <a key=${r.defect_id} class="overview-row inbox-row" href="#/zavada/${r.defect_id}">
+            <div class="overview-head">
+              <${WagonNumber} number=${r.number} />
+              <span class="spacer"></span>
+              <span class="new-badge small">${plural(r.unread, 'nový', 'nové', 'nových')}</span>
+            </div>
+            <div class="muted small inbox-defect">${r.description}</div>
+            <div class="overview-text"><b>${r.last_author || 'Někdo'}:</b> ${r.last_body}</div>
+            <div class="muted small">${formatDateTime(r.last_at)}</div>
+          </a>`)}
+      </div>
+      ${rows.length > 0 && html`
+        <button class="btn btn-ghost block toggle" onClick=${() => rows.forEach((r) => commentsSeen(r.defect_id))}>
+          <${Icon} name="check" /> Označit vše jako přečtené</button>`}
+    </main>
+    <${BottomNav} />`;
 }

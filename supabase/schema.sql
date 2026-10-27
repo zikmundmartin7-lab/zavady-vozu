@@ -22,7 +22,8 @@ create table public.profiles (
   role        text not null default 'pending'
               check (role in ('pending', 'user', 'repairer', 'admin')),
   created_at  timestamptz not null default now(),
-  news_since  timestamptz not null default now()   -- od kdy se uživateli počítají nové závady
+  news_since  timestamptz not null default now(),  -- od kdy se uživateli počítají nové závady
+  comments_since timestamptz not null default now() -- od kdy se mu počítají nové komentáře
 );
 
 create or replace function public.my_role() returns text
@@ -253,6 +254,27 @@ end $$;
 revoke execute on function public.mark_wagon_seen(uuid) from public, anon;
 grant execute on function public.mark_wagon_seen(uuid) to authenticated;
 
+-- Kdy uživatel naposledy otevřel komentáře které závady (zapisuje funkce mark_comments_seen)
+create table public.comment_seen (
+  user_id    uuid not null references public.profiles on delete cascade default auth.uid(),
+  defect_id  uuid not null references public.defects on delete cascade,
+  seen_at    timestamptz not null default now(),
+  primary key (user_id, defect_id)
+);
+
+-- Otevření komentářů závady: zapíše „přečteno teď“
+create or replace function public.mark_comments_seen(p_defect uuid) returns void
+language plpgsql security definer set search_path = '' as $$
+begin
+  if not public.is_member() then
+    raise exception 'Nemáte oprávnění.';
+  end if;
+  insert into public.comment_seen (user_id, defect_id, seen_at) values (auth.uid(), p_defect, now())
+    on conflict (user_id, defect_id) do update set seen_at = excluded.seen_at;
+end $$;
+revoke execute on function public.mark_comments_seen(uuid) from public, anon;
+grant execute on function public.mark_comments_seen(uuid) to authenticated;
+
 -- new_count = neopravené závady od ostatních vložené od chvíle, kdy uživatel vůz naposledy otevřel
 create view public.group_overview with (security_invoker = true) as
 select g.id, g.name, g.sort,
@@ -298,6 +320,26 @@ create view public.comment_feed with (security_invoker = true) as
 select c.*, p.full_name as author_name
 from public.comments c
 left join public.profiles p on p.id = c.author_id;
+
+-- Nové komentáře po závadách (odznak a seznam v aplikaci): komentáře od ostatních u závad, které uživatel
+-- zapsal nebo komentoval, napsané od chvíle, kdy komentáře té závady naposledy otevřel
+create view public.comment_inbox with (security_invoker = true) as
+select d.id as defect_id, d.wagon_id, w.number, d.description,
+       count(c.id) as unread,
+       max(c.created_at) as last_at,
+       (array_agg(c.body order by c.created_at desc))[1] as last_body,
+       (array_agg(p.full_name order by c.created_at desc))[1] as last_author
+from public.profiles me
+join public.comments c on c.author_id is distinct from me.id
+join public.defects d on d.id = c.defect_id
+join public.wagons w on w.id = d.wagon_id
+left join public.profiles p on p.id = c.author_id
+left join public.comment_seen s on s.defect_id = d.id and s.user_id = me.id
+where me.id = (select auth.uid())
+  and c.created_at > greatest(me.comments_since, s.seen_at)
+  and (d.created_by = me.id
+       or exists (select 1 from public.comments mine where mine.defect_id = d.id and mine.author_id = me.id))
+group by d.id, w.number;
 
 -- ───────────────────────── Katalog kódů závad a předpisy ─────────────────────────
 
@@ -464,8 +506,11 @@ alter table public.regulations        enable row level security;
 alter table public.audit_log          enable row level security;
 alter table public.export_schedules   enable row level security;
 alter table public.wagon_seen         enable row level security;
+alter table public.comment_seen       enable row level security;
 
 create policy "prohlédnuté vozy: jen vlastní" on public.wagon_seen
+  for select to authenticated using (user_id = (select auth.uid()));
+create policy "přečtené komentáře: jen vlastní" on public.comment_seen
   for select to authenticated using (user_id = (select auth.uid()));
 
 create policy "profil: vlastní nebo člen vidí" on public.profiles

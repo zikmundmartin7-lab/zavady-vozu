@@ -45,7 +45,7 @@ function load() {
       // starší uložená ukázka: nové závady počítat až od teď
       const since = new Date().toISOString();
       s.profiles.forEach((p) => { p.news_since ??= since; });
-      return { audit: [], schedules: [], seen: {}, ...s };
+      return { audit: [], schedules: [], seen: {}, commentSeen: {}, ...s };
     }
   } catch { /* poškozená data → nová ukázka */ }
   const s = seed();
@@ -457,6 +457,31 @@ export const api = {
   },
 
   // Komentáře
+  // Nové komentáře od ostatních u závad, které uživatel zapsal nebo komentoval (jako pohled comment_inbox)
+  async listCommentInbox() {
+    const m = requireMember();
+    const rows = [];
+    for (const d of state.defects) {
+      const all = state.comments.filter((c) => c.defect_id === d.id);
+      if (d.created_by !== m.id && !all.some((c) => c.author_id === m.id)) continue;
+      const since = [m.news_since, state.commentSeen[`${m.id}|${d.id}`]].filter(Boolean).sort().at(-1);
+      const fresh = all.filter((c) => c.author_id !== m.id && c.created_at > since)
+        .sort((a, b) => a.created_at.localeCompare(b.created_at));
+      if (!fresh.length) continue;
+      const last = fresh.at(-1);
+      rows.push({
+        defect_id: d.id, wagon_id: d.wagon_id, number: state.wagons.find((w) => w.id === d.wagon_id)?.number ?? '',
+        description: d.description, unread: fresh.length, last_at: last.created_at, last_body: last.body,
+        last_author: nameOf(last.author_id),
+      });
+    }
+    return rows.sort((a, b) => b.last_at.localeCompare(a.last_at));
+  },
+  async markCommentsSeen(defectId) {
+    const m = requireMember();
+    state.commentSeen[`${m.id}|${defectId}`] = new Date().toISOString();
+    persist(state); // bez živé aktualizace – jinak by se obrazovka znovu načítala dokola
+  },
   async listComments(defectId) {
     requireMember();
     return state.comments.filter((c) => c.defect_id === defectId)
@@ -643,5 +668,5 @@ function seed() {
   // Nové závady (odznak „nové“) se v ukázce počítají za poslední 3 dny
   const since = new Date(now - 3 * 864e5).toISOString();
   profiles.forEach((p) => { p.news_since = since; });
-  return { version: 2, profiles, wagons, defects, attachments: [], comments, audit: [], schedules: [], seen: {} };
+  return { version: 2, profiles, wagons, defects, attachments: [], comments, audit: [], schedules: [], seen: {}, commentSeen: {} };
 }
