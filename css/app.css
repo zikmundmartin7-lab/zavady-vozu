@@ -544,9 +544,17 @@ button.code-item:hover { border-color: var(--primary); }
 .new-badge.badge-inline { box-shadow: 0 0 0 2px rgba(255, 255, 255, .7); margin-right: 6px; }
 .new-badge.small { height: 22px; padding: 0 8px; font-size: .75rem; box-shadow: none; }
 .chip-new { background: var(--badge); color: #fff; }
-/* Nové komentáře: bublina v horní liště s počtem, řádky seznamu */
-.topbar .icon-btn.topbar-comments { position: relative; margin-left: 0; }
-.topbar-comments .nav-badge { top: 2px; left: auto; right: -2px; box-shadow: 0 0 0 2px var(--primary); }
+/* Nové komentáře: kulaté tlačítko nad „Nová závada“ (pevně na místě), řádky seznamu */
+.fab-comments {
+  position: fixed; z-index: 20; right: max(16px, calc((100% - var(--page-w)) / 2 + 16px));
+  bottom: calc(86px + env(safe-area-inset-bottom));
+  width: 56px; height: 56px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--surface); color: var(--primary); box-shadow: 0 4px 14px rgba(16, 24, 40, .25);
+}
+.fab-comments .nav-badge { top: -4px; left: auto; right: -4px; box-shadow: 0 0 0 2px var(--bg); }
+body:has(.bottom-nav) .fab-comments { bottom: calc(144px + env(safe-area-inset-bottom)); }
+body:has(.fab-comments) .toasts { bottom: calc(212px + env(safe-area-inset-bottom)); }
+body:has(.fab-comments) .page.with-nav { padding-bottom: calc(216px + env(safe-area-inset-bottom)); }
 .inbox-row { border-left-color: var(--badge); }
 .inbox-defect { margin-top: .2rem; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
 .defect-actions .new-badge { margin-left: .3rem; }
@@ -609,6 +617,7 @@ fieldset.field .check-row { margin: .45rem 0; color: var(--text); font-weight: 5
 .link-note { margin-bottom: 14px; border-left: 5px solid var(--primary); }
 .link-note .small { margin-top: .35rem; color: var(--muted); }
 .app-version { text-align: center; margin-top: 1rem; }
+.app-version p { margin-bottom: .4rem; }
 
 /* ───── Obnovení stažením dolů ───── */
 

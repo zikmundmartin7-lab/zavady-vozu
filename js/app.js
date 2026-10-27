@@ -239,6 +239,19 @@ function App() {
     setVersion((v) => v + 1);
   }, [me?.id, me?.role]);
 
+  // Nová verze: při návratu do aplikace (nejvýš jednou za 10 minut) se zeptat webu. Když je novější,
+  // service worker ji stáhne na pozadí a ozve se níže (app-updated) – nemusí se čekat na nové spuštění.
+  useEffect(() => {
+    let lastCheck = Date.now();
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible' || Date.now() - lastCheck < 10 * 60000) return;
+      lastCheck = Date.now();
+      navigator.serviceWorker?.getRegistration().then((r) => r?.update()).catch(() => {});
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, []);
+
   // Nová verze aplikace (service worker ji stáhl na pozadí) → nabídnout načtení
   useEffect(() => {
     const onUpdate = () => toast('Klepněte sem pro načtení nové verze.', {

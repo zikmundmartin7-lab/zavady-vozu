@@ -5,7 +5,7 @@ import { DEFAULT_PASSWORD, ROLES, can, plural } from '../model.js';
 import { APP_VERSION } from '../version.js';
 import {
   Empty, ErrorBox, Icon, InstallOffer, Loading, PasswordInput, TopBar, enablePush, isIos, isStandalone, setPushOff,
-  useApp, useLoad,
+  swVersion, updateApp, useApp, useLoad,
 } from '../ui.js';
 
 function DemoLogin() {
@@ -346,19 +346,29 @@ function ChangePassword() {
 
 // Verze aplikace = verze, která právě běží (APP_VERSION). Service worker může mít na pozadí staženou novější
 // (sw.js → CACHE) – ta se použije až po načtení znovu, proto se v tu chvíli nabídne tlačítko.
+// Tlačítko Aktualizovat: najde novou verzi na webu, stáhne ji a aplikaci načte znovu (bez zavírání).
 function AppVersion() {
+  const { toast } = useApp();
   const [downloaded, setDownloaded] = useState(0);
-  useEffect(() => {
-    const sw = navigator.serviceWorker?.controller;
-    if (!sw) return;
-    const ch = new MessageChannel();
-    ch.port1.onmessage = (e) => setDownloaded(Number(String(e.data ?? '').replace(/^zavady-v/, '')) || 0);
-    sw.postMessage({ type: 'version' }, [ch.port2]);
-  }, []);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { swVersion().then(setDownloaded); }, []);
+
+  async function update() {
+    setBusy(true);
+    const result = await updateApp(APP_VERSION);
+    if (result === 'reload') return; // aplikace se právě načítá znovu
+    if (result === 'latest') toast(`Máte nejnovější verzi (${APP_VERSION}).`);
+    if (result === 'offline') toast('Bez signálu nejde novou verzi zkontrolovat.', { kind: 'error' });
+    if (result === 'error') toast('Novou verzi se nepodařilo stáhnout – zkuste to znovu.', { kind: 'error' });
+    setBusy(false);
+  }
+
   return html`
-    <p class="muted small app-version">Verze aplikace ${APP_VERSION}
-      ${downloaded > APP_VERSION && html` · stažená je novější verze ${downloaded}
-        <button type="button" class="link-btn" onClick=${() => location.reload()}>Načíst</button>`}</p>`;
+    <div class="app-version">
+      <p class="muted small">Verze aplikace ${APP_VERSION}${downloaded > APP_VERSION ? ` · stažená je novější verze ${downloaded}` : ''}</p>
+      <button type="button" class="btn" disabled=${busy} onClick=${update}>
+        <${Icon} name="download" size=${18} /> ${busy ? 'Hledám novou verzi…' : 'Aktualizovat'}</button>
+    </div>`;
 }
 
 function CreateUserForm({ onCreated, onCancel }) {
