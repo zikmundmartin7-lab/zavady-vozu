@@ -248,7 +248,7 @@ export function CommentsFab() {
   return html`
     <a class="fab-comments" href="#/komentare"
       aria-label=${unread ? plural(unread, 'nový komentář', 'nové komentáře', 'nových komentářů') : 'Komentáře'}>
-      <${Icon} name="chat" size=${26} />
+      <${Icon} name="chat" size=${40} />
       ${unread > 0 && html`<span class="nav-badge">${unread > 99 ? '99+' : unread}</span>`}
     </a>`;
 }
