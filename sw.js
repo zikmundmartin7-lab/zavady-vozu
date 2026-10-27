@@ -1,6 +1,6 @@
 // Service worker: rychlé spuštění z paměti telefonu, offline záloha a push upozornění na nové závady.
 
-const CACHE = 'zavady-v37'; // zvýšit spolu s APP_VERSION v js/version.js
+const CACHE = 'zavady-v38'; // zvýšit spolu s APP_VERSION v js/version.js
 const PHOTO_CACHE = 'zavady-foto'; // fotky závad a obrázky katalogu (přežije novou verzi aplikace)
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
@@ -11,11 +11,23 @@ const SHELL = [
   'vendor/preact-htm.js', 'vendor/supabase.js', 'icons/icon.svg?v=2', 'icons/icon-192.png?v=2', 'icons/badge-96.png?v=2',
 ];
 
-// Nová verze: stáhnout všechny soubory znovu ze sítě (ne z mezipaměti prohlížeče)
+const SHELL_URLS = new Set(SHELL.map((u) => new URL(u, location.href).href));
+
+// Nová verze: stáhnout všechny soubory znovu přímo z webu. Jedinečný parametr v adrese obejde mezipaměť
+// prohlížeče i serverů GitHubu – jinak se k nové verzi mohly uložit soubory ze staré (verze 36 / stažená 37).
+// Soubory se uloží pod běžnou adresou; když se některý nestáhne, zůstane stará verze a zkusí se to příště.
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE)
-    .then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' }))))
-    .then(() => self.skipWaiting()));
+  e.waitUntil((async () => {
+    const stamp = Date.now();
+    const files = await Promise.all(SHELL.map(async (u) => {
+      const res = await fetch(`${u}${u.includes('?') ? '&' : '?'}sw=${stamp}`, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`${u}: ${res.status}`);
+      return [u, new Response(await res.blob(), { status: res.status, statusText: res.statusText, headers: res.headers })];
+    }));
+    const cache = await caches.open(CACHE);
+    await Promise.all(files.map(([u, res]) => cache.put(u, res)));
+    await self.skipWaiting();
+  })());
 });
 
 // Aplikace se ptá na číslo verze (Můj účet → „Verze aplikace“)
@@ -35,8 +47,9 @@ self.addEventListener('activate', (e) => {
   })());
 });
 
-// Soubory aplikace hned z paměti telefonu (rychlé spuštění), na pozadí se ověří novější verze.
-// Co v paměti není, stáhne se ze sítě; bez signálu se použije uložená verze.
+// Soubory aplikace jen z paměti telefonu (rychlé spuštění): patří k této verzi a mění se jen s novou verzí
+// (install výše), na pozadí se nepřepisují – starší kopie z mezipaměti by jinak novou verzi pokazila.
+// Ostatní soubory z paměti a na pozadí se ověří novější; co v paměti není, stáhne se ze sítě.
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== 'GET') return;
@@ -74,6 +87,7 @@ self.addEventListener('fetch', (e) => {
   e.respondWith((async () => {
     const cache = await caches.open(CACHE);
     const cached = await cache.match(e.request);
+    if (cached && SHELL_URLS.has(url.href)) return cached;
     const fromNetwork = fetch(e.request).then((res) => {
       if (res.ok && res.status === 200 && res.type === 'basic') cache.put(e.request, res.clone());
       return res;
