@@ -9,30 +9,33 @@
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" href="icons/icon.svg?v=2" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="icons/icon-192.png?v=2" />
-  <link rel="stylesheet" href="css/app.css" />
-  <!-- Všechny části aplikace se stáhnou najednou (jinak by se načítaly postupně jedna po druhé) -->
-  <link rel="modulepreload" href="js/app.js" />
-  <link rel="modulepreload" href="js/config.js" />
-  <link rel="modulepreload" href="js/model.js" />
-  <link rel="modulepreload" href="js/codes.js" />
-  <link rel="modulepreload" href="js/ui.js" />
-  <link rel="modulepreload" href="js/api/index.js" />
-  <link rel="modulepreload" href="js/api/supabase.js" />
-  <link rel="modulepreload" href="js/views/account.js" />
-  <link rel="modulepreload" href="js/views/codes.js" />
-  <link rel="modulepreload" href="js/views/defect.js" />
-  <link rel="modulepreload" href="js/views/form.js" />
-  <link rel="modulepreload" href="js/views/groups.js" />
-  <link rel="modulepreload" href="js/views/regulations.js" />
-  <link rel="modulepreload" href="js/views/wagon.js" />
-  <link rel="modulepreload" href="js/outbox.js" />
-  <link rel="modulepreload" href="js/history.js" />
-  <link rel="modulepreload" href="js/views/admin.js" />
-  <link rel="modulepreload" href="js/views/overview.js" />
-  <link rel="modulepreload" href="js/version.js" />
-  <link rel="modulepreload" href="vendor/preact-htm.js" />
-  <script defer src="vendor/supabase.js"></script>
-  <script type="module" src="js/app.js"></script>
+  <!-- Soubory aplikace se načítají s razítkem v adrese (?r=…), které se změní při znovunačtení po aktualizaci
+       (reloadApp v js/ui.js). iPhone by jinak po „Aktualizovat“ spustil znovu staré skripty ze své paměti,
+       dokud se aplikace úplně nezavře. Moduly mezi sebou dostanou razítko přes import map.
+       Všechny části aplikace se stáhnou najednou (modulepreload), jinak by se načítaly postupně jedna po druhé. -->
+  <script>
+    (() => {
+      let r = '';
+      try {
+        r = localStorage.getItem('app-reload') || String(Date.now());
+        localStorage.setItem('app-reload', r);
+      } catch {}
+      const q = r ? `?r=${r}` : '';
+      const mq = HTMLScriptElement.supports?.('importmap') ? q : ''; // starší Safari: moduly bez razítka
+      const modules = ['js/app.js', 'js/config.js', 'js/model.js', 'js/codes.js', 'js/ui.js', 'js/version.js',
+        'js/outbox.js', 'js/history.js', 'js/offline.js', 'js/xlsx.js', 'js/api/index.js', 'js/api/supabase.js',
+        'js/api/demo.js', 'js/views/account.js', 'js/views/admin.js', 'js/views/codes.js', 'js/views/defect.js',
+        'js/views/form.js', 'js/views/groups.js', 'js/views/overview.js', 'js/views/regulations.js',
+        'js/views/wagon.js', 'vendor/preact-htm.js'];
+      const lazy = ['js/xlsx.js', 'js/api/demo.js']; // načítají se až při použití
+      const imports = Object.fromEntries(modules.map((m) => [`./${m}`, `./${m}${mq}`]));
+      document.write(`<link rel="stylesheet" href="css/app.css${q}">`
+        + `<script type="importmap">${JSON.stringify({ imports })}<\/script>`
+        + modules.filter((m) => !lazy.includes(m)).map((m) => `<link rel="modulepreload" href="${m}${mq}">`).join('')
+        + `<script defer src="vendor/supabase.js${q}"><\/script>`
+        + `<script type="module">import './js/app.js';<\/script>`);
+    })();
+  </script>
 </head>
 <body>
   <div id="app"></div>

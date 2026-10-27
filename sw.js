@@ -1,6 +1,6 @@
 // Service worker: rychlé spuštění z paměti telefonu, offline záloha a push upozornění na nové závady.
 
-const CACHE = 'zavady-v39'; // zvýšit spolu s APP_VERSION v js/version.js
+const CACHE = 'zavady-v40'; // zvýšit spolu s APP_VERSION v js/version.js
 const PHOTO_CACHE = 'zavady-foto'; // fotky závad a obrázky katalogu (přežije novou verzi aplikace)
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
@@ -11,7 +11,8 @@ const SHELL = [
   'vendor/preact-htm.js', 'vendor/supabase.js', 'icons/icon.svg?v=2', 'icons/icon-192.png?v=2', 'icons/badge-96.png?v=2',
 ];
 
-const SHELL_URLS = new Set(SHELL.map((u) => new URL(u, location.href).href));
+// Soubor aplikace podle cesty → klíč v paměti; parametr v adrese se nebere v úvahu (razítko ?r=… z index.html)
+const SHELL_KEYS = new Map(SHELL.map((u) => { const x = new URL(u, location.href); return [x.pathname, x.href]; }));
 
 // Nová verze: stáhnout všechny soubory znovu přímo z webu. Jedinečný parametr v adrese obejde mezipaměť
 // prohlížeče i serverů GitHubu – jinak se k nové verzi mohly uložit soubory ze staré (verze 36 / stažená 37).
@@ -86,8 +87,9 @@ self.addEventListener('fetch', (e) => {
   }
   e.respondWith((async () => {
     const cache = await caches.open(CACHE);
+    const own = SHELL_KEYS.has(url.pathname) && await cache.match(SHELL_KEYS.get(url.pathname));
+    if (own) return own;
     const cached = await cache.match(e.request);
-    if (cached && SHELL_URLS.has(url.href)) return cached;
     const fromNetwork = fetch(e.request).then((res) => {
       if (res.ok && res.status === 200 && res.type === 'basic') cache.put(e.request, res.clone());
       return res;

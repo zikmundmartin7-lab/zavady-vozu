@@ -685,6 +685,15 @@ export function swVersion(worker = navigator.serviceWorker?.controller) {
 }
 
 /**
+ * Znovunačtení aplikace (nová verze): nové razítko v adresách souborů (viz index.html), jinak by iPhone
+ * spustil znovu staré skripty ze své paměti, dokud se aplikace úplně nezavře.
+ */
+export function reloadApp() {
+  try { localStorage.setItem('app-reload', String(Date.now())); } catch {}
+  location.reload();
+}
+
+/**
  * Aktualizace bez zavírání aplikace: zeptá se webu na novou verzi, počká, až se stáhne, a aplikaci
  * načte znovu. Vrací 'reload' (načítá se nová verze), 'latest' (novější není), 'offline' nebo 'error'.
  */
@@ -710,7 +719,7 @@ export async function updateApp(current) {
     return 'error';
   }
   if ((await swVersion(reg.active)) > current) {
-    location.reload();
+    reloadApp();
     return 'reload';
   }
   return 'latest';
