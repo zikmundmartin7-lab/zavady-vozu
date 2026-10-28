@@ -1,13 +1,14 @@
 // Service worker: rychlé spuštění z paměti telefonu, offline záloha a push upozornění na nové závady.
 
-const CACHE = 'zavady-v43'; // zvýšit spolu s APP_VERSION v js/version.js
+const CACHE = 'zavady-v44'; // zvýšit spolu s APP_VERSION v js/version.js
 const PHOTO_CACHE = 'zavady-foto'; // fotky závad a obrázky katalogu (přežije novou verzi aplikace)
+const SHARED_CACHE = 'zavady-sdilene'; // fotky sdílené do aplikace z galerie, než si je vyzvedne formulář (js/draft.js)
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/config.js', 'js/model.js', 'js/codes.js', 'js/ui.js', 'js/api/index.js', 'js/api/demo.js', 'js/api/supabase.js',
   'js/views/account.js', 'js/views/codes.js', 'js/views/defect.js', 'js/views/form.js', 'js/views/groups.js',
   'js/views/regulations.js', 'js/views/wagon.js', 'js/views/admin.js', 'js/views/overview.js',
-  'js/outbox.js', 'js/history.js', 'js/xlsx.js', 'js/offline.js', 'js/version.js',
+  'js/outbox.js', 'js/draft.js', 'js/history.js', 'js/xlsx.js', 'js/offline.js', 'js/version.js',
   'vendor/preact-htm.js', 'vendor/supabase.js', 'icons/icon.svg?v=2', 'icons/icon-192.png?v=2', 'icons/badge-96.png?v=2',
 ];
 
@@ -39,7 +40,7 @@ self.addEventListener('message', (e) => {
 // Po aktivaci smazat starou verzi a otevřeným oknům říct, že je k dispozici nová
 self.addEventListener('activate', (e) => {
   e.waitUntil((async () => {
-    const old = (await caches.keys()).filter((k) => k !== CACHE && k !== PHOTO_CACHE);
+    const old = (await caches.keys()).filter((k) => ![CACHE, PHOTO_CACHE, SHARED_CACHE].includes(k));
     await Promise.all(old.map((k) => caches.delete(k)));
     await self.clients.claim();
     if (old.length) {
@@ -53,6 +54,10 @@ self.addEventListener('activate', (e) => {
 // Ostatní soubory z paměti a na pozadí se ověří novější; co v paměti není, stáhne se ze sítě.
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
+  if (e.request.method === 'POST' && url.origin === location.origin && url.searchParams.has('sdileni')) {
+    e.respondWith(receiveShared(e.request));
+    return;
+  }
   if (e.request.method !== 'GET') return;
   // Fotky závad a obrázky katalogu ze Supabase: z paměti telefonu (klíč = cesta bez podpisu, podepsaný
   // odkaz se každou hodinu mění, fotka ne), jinak ze sítě a uložit. Videa (stahují se po částech) ne.
@@ -72,17 +77,19 @@ self.addEventListener('fetch', (e) => {
   if (url.origin !== location.origin) return;
   // Videonávod: přehrává se po částech (Range), iPhone jinak video z paměti nespustí – vždy rovnou ze sítě
   if (e.request.headers.has('range') || /\/video\/[^/]+\.mp4$/.test(url.pathname)) return;
-  // Návod k instalaci: vždy nejdřív ze sítě (ověří se i proti paměti prohlížeče), ať je hned vidět nová verze;
-  // bez signálu z paměti telefonu. Otevírá se zřídka a skoro vždy se signálem, rychlý start tu nehraje roli.
-  if (url.pathname.endsWith('/navod.html')) {
+  // Návod k instalaci a stránka s fotkami závady (fotky.html): vždy nejdřív ze sítě (ověří se i proti paměti
+  // prohlížeče), ať je hned vidět nová verze; bez signálu z paměti telefonu. Otevírají se zřídka a skoro vždy
+  // se signálem, rychlý start tu nehraje roli.
+  if (url.pathname.endsWith('/navod.html') || url.pathname.endsWith('/fotky.html')) {
     e.respondWith((async () => {
       const cache = await caches.open(CACHE);
+      const key = url.origin + url.pathname; // bez ?z=… – stránka s fotkami je pro všechny závady stejná
       try {
         const res = await fetch(url.href, { cache: 'no-cache' });
-        if (res.ok) cache.put(e.request, res.clone());
+        if (res.ok) cache.put(key, res.clone());
         return res;
       } catch {
-        return (await cache.match(e.request)) ?? Response.error();
+        return (await cache.match(key)) ?? Response.error();
       }
     })());
     return;
@@ -107,6 +114,22 @@ self.addEventListener('fetch', (e) => {
     }
   })());
 });
+
+// Sdílení do aplikace (Android: Galerie → Sdílet → Závady vozů, share_target v manifestu): fotky a videa
+// uložit do paměti a otevřít novou závadu, která si je vyzvedne. Starší nevyzvednuté se zahodí.
+async function receiveShared(request) {
+  try {
+    const form = await request.formData();
+    const files = form.getAll('media').filter((f) => typeof f !== 'string' && f.size);
+    const cache = await caches.open(SHARED_CACHE);
+    for (const k of await cache.keys()) await cache.delete(k);
+    const stamp = Date.now();
+    await Promise.all(files.map((f, i) => cache.put(`sdilene/${stamp}-${String(i).padStart(2, '0')}`, new Response(f, {
+      headers: { 'content-type': f.type || 'application/octet-stream', 'x-name': encodeURIComponent(f.name || '') },
+    }))));
+  } catch { /* nic se neuložilo – otevře se prázdná závada */ }
+  return Response.redirect(new URL('./#/nova?sdilene=1', self.registration.scope).href, 303);
+}
 
 // Safari (iPhone, iPad, Mac) chce na každé push upozornění opravdu ukázat – po několika „tichých“ odběr
 // upozornění zruší. iPhone navíc aplikaci v pozadí někdy hlásí jako otevřenou. Proto se tam ukáže vždy.

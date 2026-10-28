@@ -3,7 +3,7 @@
 import { html, useEffect, useRef, useState } from '../../vendor/preact-htm.js';
 import { can, checkDigit, formatNumber, foundAtOf, groupLabel, isValidCheckDigit, plural } from '../model.js';
 import {
-  BottomNav, DefectCard, Empty, ErrorBox, Icon, Loading, TopBar, WagonNumber, replace, useApp, useLoad,
+  BottomNav, DefectCard, Empty, ErrorBox, Icon, Loading, TopBar, WagonNumber, goBack, useApp, useLoad,
 } from '../ui.js';
 
 export function WagonView({ id }) {
@@ -53,7 +53,7 @@ export function WagonView({ id }) {
     try {
       await api.deleteWagon(w.id);
       toast('Vůz smazán.');
-      replace(`#/skupina/${w.group_id}`);
+      goBack(`#/skupina/${w.group_id}`);
     } catch (err) { toast(err.message, { kind: 'error' }); }
   }
 

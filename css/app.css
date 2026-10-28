@@ -93,6 +93,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .error-box { background: var(--red-bg); color: var(--red-ink); }
 .warn { background: var(--orange-bg); color: var(--orange-ink); }
 .ok-note { background: var(--ok-bg); color: var(--ok-ink); }
+.draft-note { align-items: center; }
+.draft-note span { flex: 1; }
+.draft-note .link-btn { font-weight: 650; padding: .2rem .4rem; }
+/* Úvodní obrazovka: nabídky (instalace → upozornění → fotoaparát) postupně, vždy jen první, ať seznam vozů
+   nezmizí pod kartami. Skrytá karta je jen nevykreslená (vrací null), další se ukáže, až první zmizí. */
+.offers > * ~ * { display: none; }
 
 /* ───── Tlačítka ───── */
 
@@ -380,6 +386,12 @@ a.card.list-row { padding: 16px; }
 .lb-close { top: calc(12px + env(safe-area-inset-top)); right: 12px; }
 .lb-prev { left: 8px; top: 50%; transform: translateY(-50%); }
 .lb-next { right: 8px; top: 50%; transform: translateY(-50%); }
+.lb-tools { position: absolute; top: calc(12px + env(safe-area-inset-top)); left: 12px; display: flex; gap: 8px; }
+.lb-tools button {
+  display: inline-flex; align-items: center; gap: .35rem; height: 48px; padding: 0 1rem; border: 0; border-radius: 999px;
+  background: rgba(0, 0, 0, .5); color: #fff; font: inherit; font-weight: 650; cursor: pointer;
+}
+.lb-tools button:disabled { opacity: .5; }
 .lb-count { position: absolute; bottom: calc(16px + env(safe-area-inset-bottom)); color: #fff; font-size: .9rem; }
 
 /* ───── Spodní lišta se záložkami ───── */
@@ -632,6 +644,7 @@ fieldset.field .check-row { margin: .45rem 0; color: var(--text); font-weight: 5
 /* ───── Okno sdílení: jiné možnosti ───── */
 
 .share-preview { margin-top: .4rem; }
+.share-collage { display: block; max-width: 100%; max-height: 200px; margin: .6rem auto 0; border-radius: 10px; border: 1px solid var(--border); }
 .share-more { margin-top: .6rem; }
 .share-more summary { cursor: pointer; color: var(--primary); font-weight: 600; padding: .4rem 0; }
 /* Úprava, smazání, vrácení: vpravo a při zalomení řádku pohromadě */

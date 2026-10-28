@@ -16,9 +16,11 @@ export function HomeView() {
     <${TopBar} title="Závady vozů"><${UserButton} /><//>
     <main class="page with-nav">
       <${OutboxBanner} />
-      <${InstallOffer} />
-      <${PushOffer} />
-      <${CameraOffer} />
+      <div class="offers">
+        <${InstallOffer} />
+        <${PushOffer} />
+        <${CameraOffer} />
+      </div>
       <${WagonSearch} onQuery=${setQ} />
       ${!q && html`
         <${ErrorBox} error=${groups.error} />

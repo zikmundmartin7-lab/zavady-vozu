@@ -3,14 +3,15 @@
 import { html, useEffect, useMemo, useState } from '../../vendor/preact-htm.js';
 import { CODE_RE } from '../codes.js';
 import {
-  MAX_VIDEO_MB, can, checkDigit, checkFoundAt, digitsOnly, foundAtOf, formatNumber, isCompleteNumber,
+  MAX_VIDEO_MB, can, checkDigit, checkFoundAt, digitsOnly, foundAtOf, formatDateTime, formatNumber, isCompleteNumber,
   isValidCheckDigit, toLocalInput,
 } from '../model.js';
 import {
-  CameraSteps, Empty, ErrorBox, GroupName, Icon, Loading, TopBar, WagonNumber, praise, replace, requestCamera, useApp,
-  useCameraPermission, useLoad,
+  CameraSteps, Empty, ErrorBox, GroupName, Icon, Loading, TopBar, WagonNumber, goBack, praise, prepareShare,
+  requestCamera, sharePhotoCopies, useApp, useCameraPermission, useLoad,
 } from '../ui.js';
 import { CodePicker } from './codes.js';
+import { draft, takeSharedFiles } from '../draft.js';
 import { outbox } from '../outbox.js';
 
 function FilePicker({ onFiles }) {
@@ -80,6 +81,10 @@ export function DefectFormView({ editId, params }) {
   const [removeIds, setRemoveIds] = useState([]);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState(null);
+  // Rozepsaná nová závada (draft.js), zvlášť pro každý vůz, ze kterého se formulář otevřel
+  const draftKey = editId ? null : presetWagonId ? `vuz:${presetWagonId}` : 'nova';
+  const [draftReady, setDraftReady] = useState(!draftKey);
+  const [restoredAt, setRestoredAt] = useState(null);
 
   // Při úpravě předvyplnit hodnoty
   useEffect(() => {
@@ -91,6 +96,48 @@ export function DefectFormView({ editId, params }) {
       setInitialFoundAt(toLocalInput(foundAtOf(d)));
     }
   }, [existingDefect.data?.id]);
+
+  // Koncept z minula (telefon aplikaci zavřel, odchod z formuláře) a fotky sdílené z galerie (?sdilene)
+  useEffect(() => {
+    if (!draftKey) return;
+    (async () => {
+      const d = await draft.load(draftKey).catch(() => null);
+      const shared = params.get('sdilene') ? await takeSharedFiles().catch(() => []) : [];
+      if (d) {
+        if (d.number && !presetWagonId) setNumber(d.number);
+        if (d.groupId) setGroupId(d.groupId);
+        if (d.code) setCode(d.code);
+        if (d.description) setDescription(d.description);
+        if (d.foundAt) setFoundAt(d.foundAt);
+        setFiles(d.files);
+        setRestoredAt(d.saved_at);
+      }
+      if (shared.length) addFiles(shared);
+      setDraftReady(true);
+    })();
+  }, [draftKey]);
+
+  // Průběžně ukládat (až po načtení konceptu, ať ho prázdný formulář nepřepíše)
+  const hasContent = !!(description.trim() || code || files.length || (!fixedWagonId && number));
+  useEffect(() => {
+    if (!draftReady || !draftKey) return;
+    if (hasContent) draft.saveText(draftKey, { number, groupId, code, description, foundAt });
+    else draft.clear(draftKey);
+  }, [draftReady, number, groupId, code, description, foundAt, hasContent]);
+  useEffect(() => {
+    if (draftReady && draftKey) draft.saveFiles(draftKey, files);
+  }, [draftReady, files]);
+
+  function discardDraft() {
+    draft.clear(draftKey);
+    if (!presetWagonId) setNumber(digitsOnly(params.get('cislo') ?? ''));
+    setGroupId(Number(params.get('skupina')) || null);
+    setCode('');
+    setDescription('');
+    setFoundAt(toLocalInput(new Date()));
+    setFiles([]);
+    setRestoredAt(null);
+  }
 
   // Po zadání celého čísla zjistit, jestli vůz už existuje
   useEffect(() => {
@@ -147,7 +194,7 @@ export function DefectFormView({ editId, params }) {
         await api.updateDefect(editId, { description, found_at, defect_code: code }, files, removeIds,
           (i, n) => setBusy(`Nahrávám přílohu ${i}/${n}…`));
         toast('Závada upravena.');
-        replace(`#/vuz/${existingDefect.data.wagon_id}`);
+        goBack(`#/vuz/${existingDefect.data.wagon_id}`);
         return;
       }
       setBusy('Ukládám…');
@@ -155,16 +202,18 @@ export function DefectFormView({ editId, params }) {
       const created = await api.createDefect({ wagon_id: wagon.id, description, found_at, defect_code: code }, files,
         (i, n) => setBusy(`Nahrávám přílohu ${i}/${n}…`));
       praise(toast, { title: 'Závada uložena', always: true });
+      await draft.clear(draftKey);
+      await goBack(`#/vuz/${wagon.id}`); // okno sdílení až na obrazovce vozu (krok v historii, viz useBackClose)
       // Ve zkušebním provozu běží souběžně skupina na WhatsAppu → hned nabídnout poslání (vše je v telefonu,
-      // nic se nestahuje: text ze zadaných údajů, fotky přímo z formuláře)
+      // nic se nestahuje: text ze zadaných údajů, fotky z formuláře jako zmenšené kopie, víc fotek v jednom obrázku)
       if (created?.id) {
         share(created.id, { afterSave: true, prepared: {
-          d: { ...created, created_by_name: me.full_name, attachments: [] },
+          d: { ...created, created_by_name: me.full_name,
+            attachments: files.map((f) => ({ kind: f.type.startsWith('video/') ? 'video' : 'image' })) },
           w: wagon,
-          files: files.filter((f) => f.type.startsWith('image/')),
+          ready: prepareShare(sharePhotoCopies(files, wagon), wagon),
         } });
       }
-      replace(`#/vuz/${wagon.id}`);
     } catch (err) {
       // Bez signálu: novou závadu uložit v telefonu a odeslat později (úpravy jen s připojením)
       if (!editId && (err.network || !navigator.onLine) && description.trim()) {
@@ -174,7 +223,8 @@ export function DefectFormView({ editId, params }) {
         });
         toast('Bez signálu – závada je uložená v telefonu a odešle se sama, jakmile bude připojení.', { sticky: true });
         praise(toast, { always: true });
-        replace(fixedWagonId ? `#/vuz/${fixedWagonId}` : '#/');
+        await draft.clear(draftKey);
+        goBack(fixedWagonId ? `#/vuz/${fixedWagonId}` : '#/');
         return;
       }
       setError(err);
@@ -203,6 +253,11 @@ export function DefectFormView({ editId, params }) {
   return html`
     <${TopBar} back=${back} title=${editId ? 'Upravit závadu' : 'Nová závada'} />
     <main class="page">
+      ${restoredAt && html`
+        <div class="ok-note draft-note"><${Icon} name="history" size=${16} />
+          <span>Pokračujete v rozepsané závadě z ${formatDateTime(restoredAt)}.</span>
+          <button type="button" class="link-btn" onClick=${discardDraft}>Zahodit</button>
+        </div>`}
       <form class="form" onSubmit=${submit}>
         <section class="card">
           <h2 class="field-label">Vůz</h2>

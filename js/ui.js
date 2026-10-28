@@ -1,15 +1,79 @@
 // Sdílené komponenty a pomocné funkce pro obrazovky.
 
-import { html, createContext, useContext, useEffect, useRef, useState } from '../vendor/preact-htm.js';
-import { can, digitsOnly, foundAtOf, formatDateTime, formatNumber, plural, splitNumber } from './model.js';
+import { html, createContext, useContext, useEffect, useMemo, useRef, useState } from '../vendor/preact-htm.js';
+import { can, compressImage, digitsOnly, foundAtOf, formatDateTime, formatNumber, plural, splitNumber } from './model.js';
 import { matchRanges } from './codes.js';
 import { outbox, syncOutbox } from './outbox.js';
+import { PHOTOS_FUNCTION, SUPABASE_URL } from './config.js';
 
 export const AppCtx = createContext(null);
 export const useApp = () => useContext(AppCtx);
 
+// ───── Navigace a tlačítko Zpět ─────
+// Každý záznam v historii prohlížeče dostane pořadí (history.state.navIdx) a aplikace si pamatuje, která
+// obrazovka byla před ním. Šipka Zpět v aplikaci pak opravdu vrací (history.back), když míří na předchozí
+// obrazovku – jinak ji jen nahradí. Dřív šipka přidávala do historie nové kroky a gesto Zpět v Androidu
+// se pak vracelo do míst, odkud člověk odešel; z úvodní obrazovky se tak gestem nedalo odejít.
+const NAV_KEY = 'zavady-nav';
+let navStack = [];
+try { navStack = JSON.parse(sessionStorage.getItem(NAV_KEY)) ?? []; } catch { /* nevadí */ }
+let navIdx = history.state?.navIdx ?? -1;
+function trackNav() {
+  let idx = history.state?.navIdx;
+  if (idx === undefined) { // nový záznam (odkaz, go)
+    idx = navIdx + 1;
+    navStack = navStack.slice(0, idx);
+    history.replaceState({ ...history.state, navIdx: idx }, '');
+  }
+  navStack[idx] = location.hash || '#/';
+  navIdx = idx;
+  try { sessionStorage.setItem(NAV_KEY, JSON.stringify(navStack)); } catch { /* nevadí */ }
+}
+trackNav();
+addEventListener('hashchange', trackNav);
+
 export const go = (hash) => { location.hash = hash; };
-export const replace = (hash) => { location.replace(hash); };
+// Nahradit obrazovku bez nového záznamu v historii (pořadí záznamu zůstane, viz trackNav)
+export function replace(hash) {
+  const oldURL = location.href;
+  history.replaceState(history.state, '', hash);
+  dispatchEvent(new HashChangeEvent('hashchange', { oldURL, newURL: location.href }));
+}
+
+/** Zpět na obrazovku hash: krokem zpět v historii, je-li to předchozí obrazovka, jinak jejím nahrazením. */
+export function goBack(hash) {
+  if (navIdx > 0 && navStack[navIdx - 1] === hash) {
+    return new Promise((resolve) => {
+      addEventListener('hashchange', () => resolve(), { once: true });
+      setTimeout(resolve, 800);
+      history.back();
+    });
+  }
+  replace(hash);
+  return Promise.resolve();
+}
+
+/**
+ * Okno přes obrazovku (fotka, sdílení) jako krok v historii: tlačítko/gesto Zpět v telefonu ho zavře
+ * a obrazovka pod ním zůstane. Zavřené jinak (křížek) krok z historie zase odebere.
+ */
+export function useBackClose(onClose) {
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    const id = Math.random().toString(36).slice(2);
+    history.pushState({ ...history.state, modal: id }, '');
+    const onPop = () => { if (history.state?.modal !== id) closeRef.current(); };
+    const onHash = () => closeRef.current(); // přechod na jinou obrazovku (odkaz v okně, upozornění)
+    addEventListener('popstate', onPop);
+    addEventListener('hashchange', onHash);
+    return () => {
+      removeEventListener('popstate', onPop);
+      removeEventListener('hashchange', onHash);
+      if (history.state?.modal === id) history.back();
+    };
+  }, []);
+}
 
 // Poslední známá data (skupiny, vozy, závady, komentáře, přehled) – zobrazí se hned, pak se obnoví ze sítě.
 // Plní je i stahování na pozadí (offline.js), takže aplikace funguje i se slabým signálem.
@@ -201,11 +265,18 @@ export function CodeSummary({ code, catalog }) {
 // Klepnutí na záložku, která je už otevřená na své úvodní obrazovce, ji vrátí na začátek
 // (vymaže hledání, posune nahoru). Z vnořené stránky (skupina, vůz, část katalogu) vede na úvod záložky.
 // Červený odznak u záložky Přehled = počet nových (nepřečtených) závad od ostatních.
+// Přepínání mezi záložkami se v historii nehromadí (jako v aplikacích pro Android): Zpět z kterékoli
+// záložky vede na Vozy a odtud z aplikace ven.
+const TABS = ['#/', '#/prehled', '#/kody', '#/predpisy'];
 export function BottomNav({ active }) {
   const { resetTab, newDefects } = useApp();
+  const onTab = (e, href) => {
+    const here = location.hash || '#/';
+    if (here === href) { e.preventDefault(); resetTab(); return; }
+    if (here !== '#/' && TABS.includes(here)) { e.preventDefault(); goBack(href); }
+  };
   const tab = (key, href, icon, label, unread = 0) => html`
-    <a href=${href} class=${active === key ? 'active' : ''}
-      onClick=${(e) => { if ((location.hash || '#/') === href) { e.preventDefault(); resetTab(); } }}>
+    <a href=${href} class=${active === key ? 'active' : ''} onClick=${(e) => onTab(e, href)}>
       <span class="nav-icon"><${Icon} name=${icon} size=${22} />
         ${unread > 0 && html`<span class="nav-badge" aria-label=${plural(unread, 'nová závada', 'nové závady', 'nových závad')}>
           ${unread > 99 ? '99+' : unread}</span>`}</span>
@@ -229,7 +300,8 @@ export const Empty = ({ children }) => html`<div class="empty">${children}</div>
 export function TopBar({ title, back, children, sub }) {
   return html`
     <header class="topbar">
-      ${back && html`<a class="icon-btn" href=${back} aria-label="Zpět"><${Icon} name="back" size=${24} /></a>`}
+      ${back && html`<a class="icon-btn" href=${back} aria-label="Zpět"
+        onClick=${(e) => { e.preventDefault(); goBack(back); }}><${Icon} name="back" size=${24} /></a>`}
       <div class="topbar-title">
         <h1>${title}</h1>
         ${sub && html`<div class="topbar-sub">${sub}</div>`}
@@ -400,7 +472,7 @@ export function DefectCard({ d, wagon = null, showComments = true, isNew = false
       ${d.attachments?.length > 0 && html`
         <div class="media-grid">
           ${d.attachments.map((a, i) => html`
-            <button key=${a.id} class="media-thumb" onClick=${() => openMedia(d.attachments, i)}
+            <button key=${a.id} class="media-thumb" onClick=${() => openMedia(d.attachments, i, { download: ['zavada', (wagon?.number ?? d.number ?? '').slice(-4)].filter(Boolean).join('-') })}
               aria-label=${a.kind === 'video' ? 'Přehrát video' : 'Zobrazit fotku'}>
               ${a.kind === 'video'
                 ? html`<video src=${a.url} preload="none" muted playsinline></video><span class="play"><${Icon} name="play" size=${22} /></span>`
@@ -484,8 +556,17 @@ export function defectShareText(d, w, catalog) {
     lines.push(`Opraveno ${formatDateTime(d.resolved_at)} · ${who(d.resolved_by_name)}${d.resolution_note ? ` – ${d.resolution_note}` : ''}`);
   }
   const videos = (d.attachments ?? []).filter((a) => a.kind === 'video').length;
-  if (videos) lines.push(`${plural(videos, 'video', 'videa', 'videí')} v aplikaci`);
-  lines.push(`V aplikaci: ${location.origin}${location.pathname}#/vuz/${d.wagon_id}`);
+  const photos = (d.attachments ?? []).length - videos;
+  // Víc fotek přijde ve WhatsAppu v jednom zmenšeném obrázku, videa vůbec – jednotlivě ke stažení jsou
+  // na stránce fotky.html (i bez účtu, souběh se skupinou na WhatsAppu), jinak na stránce závady v aplikaci
+  const inApp = `${location.origin}${location.pathname}#/zavada/${d.id}`;
+  if (photos > 1 || videos) {
+    const what = videos ? (photos ? 'Fotky a videa ke stažení' : 'Video ke stažení') : 'Fotky v plné kvalitě ke stažení';
+    const page = SUPABASE_URL && PHOTOS_FUNCTION ? new URL(`fotky.html?z=${d.id}`, location.href).href : inApp;
+    lines.push(`${what}: ${page}`);
+  } else {
+    lines.push(`V aplikaci: ${inApp}`);
+  }
   return lines.join('\n');
 }
 
@@ -493,50 +574,175 @@ export function defectShareText(d, w, catalog) {
 async function photoFiles(d, w) {
   const out = [];
   const photos = (d.attachments ?? []).filter((a) => a.kind !== 'video' && a.url);
-  for (const [i, a] of photos.entries()) {
+  for (const a of photos) {
     try {
-      const blob = await (await fetch(a.url)).blob();
-      const type = blob.type || 'image/jpeg';
-      const ext = type.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg';
-      out.push(new File([blob], `zavada-${w.number.slice(-4)}-${i + 1}.${ext}`, { type }));
+      out.push(shareFile(await (await fetch(a.url)).blob(), w, out.length));
     } catch { /* fotku se nepodařilo stáhnout – sdílí se bez ní */ }
+  }
+  return out;
+}
+
+function shareFile(blob, w, i) {
+  const type = blob.type || 'image/jpeg';
+  const ext = type.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg';
+  return new File([blob], `zavada-${w.number.slice(-4)}-${i + 1}.${ext}`, { type });
+}
+
+/**
+ * Fotky z formuláře (sdílení hned po uložení) jako zmenšené kopie v paměti. Soubory přímo z fotoaparátu
+ * nebo galerie Chrome v Androidu do sdílení nepředal – nabídka sdílení se vůbec neotevřela (28. 10.).
+ * Kopie v paměti se sdílí stejně jako fotky stažené z aplikace (tlačítko WhatsApp u závady), které fungují.
+ */
+export async function sharePhotoCopies(files, w) {
+  const out = [];
+  for (const f of files.filter((x) => x.type.startsWith('image/'))) {
+    try {
+      const small = await compressImage(f);
+      out.push(shareFile(new Blob([await small.arrayBuffer()], { type: small.type }), w, out.length));
+    } catch { /* fotku se nepodařilo připravit – sdílí se bez ní */ }
   }
   return out;
 }
 
 const shareable = (files) => (files?.length && navigator.canShare?.({ files }) ? files : []);
 
-async function nativeShare(text, files) {
-  // WhatsApp na iPhonu k fotkám text někdy nepřipojí – ať je aspoň ve schránce
-  if (files.length) navigator.clipboard?.writeText(text).catch(() => {});
-  await navigator.share(files.length ? { text, files } : { text });
+// ───── Víc fotek jako jeden obrázek ─────
+// WhatsApp v Androidu připíše sdílený text ke každé fotce zvlášť (4 fotky = 4× celý popis závady) a webová
+// aplikace to ovlivnit neumí. Víc fotek se proto posílá jako jeden obrázek (koláž): odejde vše jedním
+// sdílením a text je u obrázku jen jednou. Jednotlivé fotky jsou v aplikaci (odkaz ve zprávě).
+const COLLAGE_W = 2048;
+const COLLAGE_MAX_H = 4096;
+const COLLAGE_GAP = 8;
+const COLLAGE_PER_ROW = 3;
+const COLLAGE_ROW_MAX = 0.65; // nejvyšší řádek vůči šířce (jinak by jedna fotka na výšku zabrala celý obrázek)
+const COLLAGE_MAX = 12;
+
+// Fotky po řádcích (kratší řádky nahoře – první fotka bývá celkový pohled). Fotky v řádku mají stejnou výšku
+// a vyplní šířku, nic se neořízne; příliš vysoký řádek se sníží a vycentruje.
+function collageRows(aspects, rowCount, width) {
+  const base = Math.floor(aspects.length / rowCount);
+  const extra = aspects.length % rowCount;
+  const rows = [];
+  for (let r = 0, start = 0; r < rowCount; r++) {
+    const count = base + (r >= rowCount - extra ? 1 : 0);
+    const sum = aspects.slice(start, start + count).reduce((s, a) => s + a, 0);
+    const height = Math.min((width - COLLAGE_GAP * (count - 1)) / sum, width * COLLAGE_ROW_MAX);
+    rows.push({ start, count, height, left: (width - height * sum - COLLAGE_GAP * (count - 1)) / 2 });
+    start += count;
+  }
+  return rows;
+}
+const rowsHeight = (rows) => rows.reduce((s, r) => s + r.height, 0) + COLLAGE_GAP * (rows.length - 1);
+
+async function collageFile(files, w) {
+  const imgs = (await Promise.all(files.slice(0, COLLAGE_MAX).map((f) => createImageBitmap(f).catch(() => null))))
+    .filter(Boolean);
+  if (imgs.length < 2) return null;
+  const aspects = imgs.map((b) => b.width / b.height);
+  // počet řádků, se kterým je obrázek nejblíž čtverci (WhatsApp ho tak ukáže celý)
+  let best = 0;
+  let bestScore = Infinity;
+  for (let r = Math.ceil(imgs.length / COLLAGE_PER_ROW); r <= imgs.length; r++) {
+    const score = Math.abs(Math.log(COLLAGE_W / rowsHeight(collageRows(aspects, r, COLLAGE_W))));
+    if (score < bestScore) { best = r; bestScore = score; }
+  }
+  let width = COLLAGE_W;
+  let rows = collageRows(aspects, best, width);
+  if (rowsHeight(rows) > COLLAGE_MAX_H) { // moc vysoký (fotky na výšku) → užší
+    width = Math.floor((width * COLLAGE_MAX_H) / rowsHeight(rows));
+    rows = collageRows(aspects, best, width);
+  }
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = Math.min(Math.round(rowsHeight(rows)), COLLAGE_MAX_H);
+  const g = canvas.getContext('2d');
+  g.fillStyle = '#fff';
+  g.fillRect(0, 0, canvas.width, canvas.height);
+  const r0 = Math.round(width / 44); // číslo fotky v rohu, ať se na ni dá v debatě odkázat
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.font = `bold ${Math.round(r0 * 1.2)}px sans-serif`;
+  let y = 0;
+  for (const row of rows) {
+    let x = row.left;
+    for (let j = row.start; j < row.start + row.count; j++) {
+      const cw = aspects[j] * row.height;
+      g.drawImage(imgs[j], x, y, cw, row.height);
+      g.fillStyle = 'rgba(0, 0, 0, .6)';
+      g.beginPath();
+      g.arc(x + r0 * 1.5, y + r0 * 1.5, r0, 0, 2 * Math.PI);
+      g.fill();
+      g.fillStyle = '#fff';
+      g.fillText(String(j + 1), x + r0 * 1.5, y + r0 * 1.5 + 1);
+      x += cw + COLLAGE_GAP;
+    }
+    y += row.height + COLLAGE_GAP;
+  }
+  imgs.forEach((b) => b.close?.());
+  const blob = await new Promise((res) => canvas.toBlob(res, 'image/jpeg', 0.85));
+  return blob ? new File([blob], `zavada-${w.number.slice(-4)}-fotky.jpg`, { type: 'image/jpeg' }) : null;
 }
 
 /**
- * Sdílení na jedno klepnutí: rovnou otevře nabídku sdílení telefonu (text + fotky).
+ * Fotky pro sdílení: files = jednotlivé fotky, media = co se posílá s textem (nic, jedna fotka, nebo víc
+ * fotek v jednom obrázku). Když se obrázek nepovede, pošle se s textem aspoň první fotka.
+ */
+export async function prepareShare(filesOrPromise, w) {
+  const files = shareable(await filesOrPromise);
+  if (files.length < 2) return { files, media: files };
+  const one = await collageFile(files, w).catch(() => null);
+  return { files, media: one ? shareable([one]) : files.slice(0, 1) };
+}
+
+async function nativeShare(text, files) {
+  // WhatsApp na iPhonu k fotkám text někdy nepřipojí – ať je aspoň ve schránce. Na Androidu ne: telefon
+  // ukáže „Zkopírováno do schránky“ a vypadá to, jako by se místo odeslání jen zkopíroval text.
+  if (text && files.length && isIos()) navigator.clipboard?.writeText(text).catch(() => {});
+  const data = files.length ? { files } : {};
+  if (text) data.text = text;
+  const started = Date.now();
+  try {
+    await navigator.share(data);
+  } catch (e) {
+    // Zrušení i selhání hlásí prohlížeč stejně (AbortError). Okamžité „zrušení“ znamená, že se nabídka
+    // sdílení vůbec neotevřela – to je chyba telefonu, ne rozhodnutí uživatele, a musí být vidět.
+    if (e.name === 'AbortError' && Date.now() - started < 1000) {
+      throw new Error(files.length ? 'telefon nabídku sdílení s fotkami neotevřel.' : 'telefon nabídku sdílení neotevřel.');
+    }
+    throw e;
+  }
+}
+
+/**
+ * Sdílení na jedno klepnutí: rovnou otevře nabídku sdílení telefonu (text + fotky v jednom obrázku).
  * Když to nejde (počítač, fotky se stahují dlouho, telefon sdílení odmítne), otevře okno s jedním tlačítkem.
  */
 export async function quickShare({ d, w, catalog, openDialog, onShared }) {
   if (!w || typeof navigator.share !== 'function') { openDialog({}); return; }
   const text = defectShareText(d, w, catalog);
-  const filesPromise = photoFiles(d, w);
-  const files = await Promise.race([filesPromise, new Promise((res) => setTimeout(() => res(null), 2500))]);
-  if (files === null) { openDialog({ d, w, filesPromise }); return; }
+  const ready = prepareShare(photoFiles(d, w), w);
+  const set = await Promise.race([ready, new Promise((res) => setTimeout(() => res(null), 2500))]);
+  if (set === null) { openDialog({ d, w, ready }); return; }
   try {
-    await nativeShare(text, shareable(files));
+    await nativeShare(text, set.media);
     onShared?.();
   } catch (e) {
-    if (e.name !== 'AbortError') openDialog({ d, w, files });
+    if (e.name !== 'AbortError') openDialog({ d, w, ...set, error: new Error(`Sdílení se nepovedlo: ${e.message}`) });
   }
 }
 
-/** Okno pro sdílení: náhled zprávy a jedno velké tlačítko. prepared = { d, w, files | filesPromise } (bez sítě). */
+/**
+ * Okno pro sdílení: náhled zprávy a obrázku a jedno velké tlačítko.
+ * prepared = { d, w, files + media | ready (prepareShare), error } (bez sítě).
+ */
 export function ShareDialog({ id, afterSave = false, prepared = {}, onClose }) {
   const { api, toast } = useApp();
   const catalog = useCatalog();
   const [data, setData] = useState(prepared.d && prepared.w ? { d: prepared.d, w: prepared.w } : null);
-  const [files, setFiles] = useState(prepared.files ? shareable(prepared.files) : null); // null = připravuji fotky
-  const [error, setError] = useState(null);
+  // { files, media } – null = připravuji fotky
+  const [set, setSet] = useState(prepared.files ? { files: prepared.files, media: prepared.media } : null);
+  const [error, setError] = useState(prepared.error ?? null);
+  useBackClose(onClose);
 
   useEffect(() => {
     let alive = true;
@@ -549,8 +755,8 @@ export function ShareDialog({ id, afterSave = false, prepared = {}, onClose }) {
         if (alive) setData({ d, w });
       }
       if (!prepared.files) {
-        const f = await (prepared.filesPromise ?? photoFiles(d, w));
-        if (alive) setFiles(shareable(f));
+        const s = await (prepared.ready ?? prepareShare(photoFiles(d, w), w));
+        if (alive) setSet(s);
       }
     })().catch((e) => alive && setError(e));
     const onKey = (e) => e.key === 'Escape' && onClose();
@@ -558,19 +764,24 @@ export function ShareDialog({ id, afterSave = false, prepared = {}, onClose }) {
     return () => { alive = false; removeEventListener('keydown', onKey); };
   }, [id]);
 
+  // Náhled obrázku, který odejde (víc fotek v jednom)
+  const count = set?.files.length ?? 0;
+  const collageUrl = useMemo(() => (count > 1 && set.media[0] ? URL.createObjectURL(set.media[0]) : null), [set]);
+  useEffect(() => () => collageUrl && URL.revokeObjectURL(collageUrl), [collageUrl]);
+
   const text = data ? defectShareText(data.d, data.w, catalog) : '';
   const canNative = typeof navigator.share === 'function';
-  const photoCount = (data?.d.attachments ?? []).filter((a) => a.kind !== 'video').length || prepared.files?.length || 0;
-  const preparing = canNative && photoCount > 0 && files === null;
+  const preparing = canNative && set === null && !error;
   const waLink = `https://wa.me/?text=${encodeURIComponent(text)}`;
 
-  async function send() {
+  async function send(withText = true) {
+    setError(null);
     try {
-      await nativeShare(text, files ?? []);
+      await nativeShare(withText ? text : '', withText ? set?.media ?? [] : set.files);
       praise(toast);
       onClose();
     } catch (e) {
-      if (e.name !== 'AbortError') toast(`Sdílení se nepovedlo: ${e.message}`, { kind: 'error' });
+      if (e.name !== 'AbortError') setError(new Error(`Sdílení se nepovedlo: ${e.message}`));
     }
   }
   async function copy() {
@@ -582,7 +793,7 @@ export function ShareDialog({ id, afterSave = false, prepared = {}, onClose }) {
     }
   }
 
-  const what = files?.length ? ` (text + ${plural(files.length, 'fotka', 'fotky', 'fotek')})` : '';
+  const what = !count ? '' : count === 1 ? ' (text + fotka)' : ` (text + ${plural(count, 'fotka', 'fotky', 'fotek')})`;
   return html`
     <div class="dialog-backdrop" onClick=${(e) => e.target === e.currentTarget && onClose()}>
       <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="share-title">
@@ -594,17 +805,21 @@ export function ShareDialog({ id, afterSave = false, prepared = {}, onClose }) {
         ${!data && !error && html`<${Loading} />`}
         ${data && html`
           ${canNative
-            ? html`<button class="btn btn-whatsapp block big-btn" disabled=${preparing} onClick=${send}>
+            ? html`<button class="btn btn-whatsapp block big-btn" disabled=${preparing} onClick=${() => send()}>
                 ${preparing ? 'Připravuji fotky…' : `Poslat do WhatsAppu${what}`}</button>
-              <p class="muted small">V nabídce klepněte na WhatsApp a vyberte skupinu.</p>`
+              <p class="muted small">V nabídce klepněte na WhatsApp a vyberte skupinu.${count > 1
+                ? ' Fotky přijdou v jednom obrázku a text u něj jen jednou; v plné kvalitě si je kdokoli ze skupiny stáhne přes odkaz ve zprávě (i bez účtu).' : ''}</p>`
             : html`<a class="btn btn-whatsapp block big-btn" href=${waLink} target="_blank" rel="noopener"
                 onClick=${() => praise(toast)}>Otevřít WhatsApp</a>
               <p class="muted small">Otevře se WhatsApp s připraveným textem, vyberete jen skupinu. Fotky pošlete z telefonu.</p>`}
+          ${collageUrl && html`<img class="share-collage" src=${collageUrl} alt="Fotky v jednom obrázku" />`}
           <div class="share-preview">${text}</div>
-          <details class="share-more">
+          <details class="share-more" open=${!!error}>
             <summary>Jiné možnosti</summary>
             ${canNative && html`<a class="btn block" href=${waLink} target="_blank" rel="noopener"
               onClick=${() => praise(toast)}>WhatsApp jen s textem</a>`}
+            ${canNative && count > 1 && html`<button class="btn block" onClick=${() => send(false)}>
+              Fotky každou zvlášť (bez textu)</button>`}
             <button class="btn block" onClick=${copy}><${Icon} name="clipboard" size=${18} /> Kopírovat text</button>
           </details>
           ${afterSave && html`<button class="btn btn-ghost block" onClick=${onClose}>Teď ne</button>`}`}
@@ -727,9 +942,40 @@ export async function updateApp(current) {
 
 // ───── Prohlížeč fotek a videí ─────
 
-export function Lightbox({ items, index, onClose }) {
+// Stažení fotky nebo videa do telefonu (Stažené soubory; galerie je ukáže v albu Download)
+async function downloadMedia(a, name) {
+  const blob = await (await fetch(a.url)).blob();
+  const ext = (blob.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg').replace('quicktime', 'mov');
+  const url = URL.createObjectURL(blob);
+  const link = Object.assign(document.createElement('a'), { href: url, download: `${name}.${ext}` });
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+/** Prohlížeč fotek a videí. download = začátek názvu staženého souboru (bez něj se stahovat nedá – katalog). */
+export function Lightbox({ items, index, download, onClose }) {
+  const { toast } = useApp();
   const [i, setI] = useState(index);
+  const [busy, setBusy] = useState(false);
   const a = items[i];
+  useBackClose(onClose);
+  async function save(list) {
+    setBusy(true);
+    try {
+      for (const [k, item] of list.entries()) {
+        if (k) await new Promise((r) => setTimeout(r, 400)); // telefon jinak některá stažení zahodí
+        await downloadMedia(item, `${download}-${items.indexOf(item) + 1}`);
+      }
+      toast(`Staženo do telefonu: ${list.length === 1 ? (list[0].kind === 'video' ? 'video' : 'fotka')
+        : plural(list.length, 'soubor', 'soubory', 'souborů')} (Stažené soubory).`);
+    } catch (e) {
+      toast(`Stažení se nepovedlo: ${e.message}`, { kind: 'error' });
+    } finally {
+      setBusy(false);
+    }
+  }
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === 'Escape') onClose();
@@ -742,6 +988,11 @@ export function Lightbox({ items, index, onClose }) {
   return html`
     <div class="lightbox" onClick=${(e) => e.target === e.currentTarget && onClose()}>
       <button class="icon-btn lb-close" onClick=${onClose} aria-label="Zavřít"><${Icon} name="x" size=${28} /></button>
+      ${download && html`
+        <div class="lb-tools">
+          <button disabled=${busy} onClick=${() => save([a])}><${Icon} name="download" size=${18} /> Stáhnout</button>
+          ${items.length > 1 && html`<button disabled=${busy} onClick=${() => save(items)}>Vše (${items.length})</button>`}
+        </div>`}
       ${a.kind === 'video'
         ? html`<video key=${a.id} src=${a.url} controls autoplay playsinline></video>`
         : html`<img key=${a.id} src=${a.url} alt="" />`}

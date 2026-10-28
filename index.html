@@ -23,7 +23,7 @@
       const q = r ? `?r=${r}` : '';
       const mq = HTMLScriptElement.supports?.('importmap') ? q : ''; // starší Safari: moduly bez razítka
       const modules = ['js/app.js', 'js/config.js', 'js/model.js', 'js/codes.js', 'js/ui.js', 'js/version.js',
-        'js/outbox.js', 'js/history.js', 'js/offline.js', 'js/xlsx.js', 'js/api/index.js', 'js/api/supabase.js',
+        'js/outbox.js', 'js/draft.js', 'js/history.js', 'js/offline.js', 'js/xlsx.js', 'js/api/index.js', 'js/api/supabase.js',
         'js/api/demo.js', 'js/views/account.js', 'js/views/admin.js', 'js/views/codes.js', 'js/views/defect.js',
         'js/views/form.js', 'js/views/groups.js', 'js/views/overview.js', 'js/views/regulations.js',
         'js/views/wagon.js', 'vendor/preact-htm.js'];

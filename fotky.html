@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Fotky závady – Závady vozů</title>
+  <meta name="robots" content="noindex" />
+  <meta name="theme-color" content="#1f4e8c" />
+  <link rel="icon" href="icons/icon.svg?v=2" type="image/svg+xml" />
+  <link rel="stylesheet" href="css/app.css" />
+  <!-- Fotky a videa jedné závady i pro lidi bez účtu (odkaz „Fotky v plné kvalitě ke stažení“ ve zprávě
+       do WhatsAppu). Data dává Edge Function „fotky“ (supabase/functions/fotky) podle ID závady v adrese. -->
+  <style>
+    .photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 12px; }
+    .photo { margin: 0; background: var(--surface); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
+    .photo a, .photo video { display: block; width: 100%; aspect-ratio: 4 / 3; background: #000; }
+    .photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .photo video { object-fit: contain; }
+    .photo figcaption { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 6px 8px; }
+    .photo figcaption b { color: var(--muted); }
+    .photo .btn { padding: .4rem .7rem; }
+    .foot { text-align: center; margin-top: 1.5rem; }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-title">
+      <h1>Fotky závady</h1>
+      <div class="topbar-sub" id="sub"></div>
+    </div>
+  </header>
+  <main class="page">
+    <div id="status" class="loading"><span class="spinner"></span> Načítám fotky…</div>
+    <section id="box" class="card" hidden>
+      <button id="all" class="btn btn-primary block big-btn">Stáhnout vše</button>
+      <button id="share" class="btn block" hidden disabled>Sdílet fotky (WhatsApp, e-mail…)</button>
+      <p class="muted small" id="hint"></p>
+      <div class="photos" id="photos"></div>
+    </section>
+    <p class="foot small"><a id="app" href="./">Máte účet? Otevřít závadu v aplikaci Závady vozů</a></p>
+  </main>
+
+  <script type="module">
+    import { PHOTOS_FUNCTION, SUPABASE_URL } from './js/config.js';
+
+    const $ = (id) => document.getElementById(id);
+    const id = new URLSearchParams(location.search).get('z') ?? '';
+    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    $('app').href = `./#/zavada/${encodeURIComponent(id)}`;
+
+    const fail = (msg) => { $('status').className = 'error-box'; $('status').textContent = msg; };
+    const plural = (n, one, few, many) => `${n} ${n === 1 ? one : n >= 2 && n <= 4 ? few : many}`;
+    const extOf = (type) => (type.split('/')[1] || 'jpg').replace('jpeg', 'jpg').replace('quicktime', 'mov');
+
+    let files = []; // { kind, url, name }
+    let photoBlobs = null; // fotky stažené předem pro sdílení (bez videí – bývají velká)
+
+    async function blobOf(f) {
+      const res = await fetch(f.url);
+      if (!res.ok) throw new Error(`soubor ${f.name} se nepodařilo stáhnout`);
+      return res.blob();
+    }
+    // Uložit do telefonu (Stažené soubory; galerie v Androidu je ukáže v albu Download)
+    async function save(f) {
+      const blob = await blobOf(f);
+      const url = URL.createObjectURL(blob);
+      const a = Object.assign(document.createElement('a'), { href: url, download: `${f.name}.${extOf(blob.type)}` });
+      document.body.append(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    }
+    async function run(btn, label, fn) {
+      const text = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = label;
+      try { await fn(); } catch (e) { if (e.name !== 'AbortError') alert(`Nepovedlo se: ${e.message}`); }
+      finally { btn.disabled = false; btn.textContent = text; }
+    }
+
+    function render(data) {
+      const tail = data.number.replace(/\D/g, '').slice(-4);
+      files = data.files.map((f, i) => ({ ...f, name: `zavada-${tail || 'foto'}-${i + 1}` }));
+      const photos = files.filter((f) => f.kind !== 'video').length;
+      const videos = files.length - photos;
+      $('sub').textContent = [data.number && `Vůz ${data.number}`,
+        [photos && plural(photos, 'fotka', 'fotky', 'fotek'), videos && plural(videos, 'video', 'videa', 'videí')]
+          .filter(Boolean).join(', ')].filter(Boolean).join(' · ');
+      if (!files.length) return fail('U této závady nejsou žádné fotky ani videa.');
+
+      for (const [i, f] of files.entries()) {
+        const fig = document.createElement('figure');
+        fig.className = 'photo';
+        if (f.kind === 'video') {
+          const v = Object.assign(document.createElement('video'), { src: f.url, controls: true, preload: 'metadata', playsInline: true });
+          fig.append(v);
+        } else {
+          const a = Object.assign(document.createElement('a'), { href: f.url, target: '_blank', rel: 'noopener' });
+          a.append(Object.assign(document.createElement('img'), { src: f.url, alt: `Fotka ${i + 1}`, loading: 'lazy' }));
+          fig.append(a);
+        }
+        const cap = document.createElement('figcaption');
+        const no = Object.assign(document.createElement('b'), { textContent: `${i + 1}` });
+        const btn = Object.assign(document.createElement('button'), { className: 'btn', textContent: 'Stáhnout' });
+        btn.onclick = () => run(btn, 'Stahuji…', () => save(f));
+        cap.append(no, btn);
+        fig.append(cap);
+        $('photos').append(fig);
+      }
+
+      $('all').textContent = files.length === 1 ? 'Stáhnout' : `Stáhnout vše (${files.length})`;
+      $('all').onclick = () => run($('all'), 'Stahuji…', async () => {
+        for (const [k, f] of files.entries()) {
+          if (k) await new Promise((r) => setTimeout(r, 400)); // telefon jinak některá stažení zahodí
+          await save(f);
+        }
+      });
+      $('hint').textContent = ios
+        ? 'Na iPhonu je nejjednodušší Sdílet fotky → Uložit obrázky (do aplikace Fotky).'
+        : 'Soubory se uloží do Stažených souborů, v galerii je najdete v albu Download. Klepnutím na fotku ji zvětšíte.';
+      $('status').hidden = true;
+      $('box').hidden = false;
+
+      // Sdílení fotek (bez textu – ten už je ve zprávě): fotky se stáhnou předem, ať se nabídka otevře hned
+      const shareable = (list) => list.length && navigator.canShare?.({ files: list });
+      if (photos && typeof navigator.share === 'function') {
+        $('share').hidden = false;
+        Promise.all(files.filter((f) => f.kind !== 'video').map(async (f) => {
+          const blob = await blobOf(f);
+          return new File([blob], `${f.name}.${extOf(blob.type)}`, { type: blob.type || 'image/jpeg' });
+        })).then((list) => {
+          if (!shareable(list)) { $('share').hidden = true; return; }
+          photoBlobs = list;
+          $('share').disabled = false;
+        }, () => { $('share').hidden = true; });
+        $('share').onclick = () => run($('share'), 'Otevírám…', () => navigator.share({ files: photoBlobs }));
+      }
+    }
+
+    (async () => {
+      if (!/^[0-9a-f-]{36}$/i.test(id)) return fail('Neplatný odkaz – chybí v něm označení závady.');
+      if (!SUPABASE_URL || !PHOTOS_FUNCTION) return fail('Stahování fotek bez účtu je vypnuté. Fotky najdete v aplikaci.');
+      let res;
+      try {
+        res = await fetch(`${SUPABASE_URL}/functions/v1/${PHOTOS_FUNCTION}?z=${encodeURIComponent(id)}`);
+      } catch {
+        return fail('Bez připojení – fotky se nepodařilo načíst. Zkuste to znovu se signálem.');
+      }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return fail(data.error || 'Fotky se nepodařilo načíst.');
+      render(data);
+    })();
+  </script>
+</body>
+</html>

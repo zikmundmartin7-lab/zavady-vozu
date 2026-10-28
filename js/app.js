@@ -306,7 +306,7 @@ function App() {
       setInstallPrompt(null);
       return outcome;
     },
-    openMedia: (items, index) => setMedia({ items, index }),
+    openMedia: (items, index, opts = {}) => setMedia({ items, index, ...opts }),
     share: (id, opts = {}) => setSharing({ id, ...opts }),
     resetTab: () => { setTabReset((n) => n + 1); scrollTo(0, 0); },
     pendingUsers, newDefects, seenWagons, commentInbox,
