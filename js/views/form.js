@@ -6,7 +6,10 @@ import {
   MAX_VIDEO_MB, can, checkDigit, checkFoundAt, digitsOnly, foundAtOf, formatNumber, isCompleteNumber,
   isValidCheckDigit, toLocalInput,
 } from '../model.js';
-import { Empty, ErrorBox, GroupName, Icon, Loading, TopBar, WagonNumber, praise, replace, useApp, useLoad } from '../ui.js';
+import {
+  CameraSteps, Empty, ErrorBox, GroupName, Icon, Loading, TopBar, WagonNumber, praise, replace, requestCamera, useApp,
+  useCameraPermission, useLoad,
+} from '../ui.js';
 import { CodePicker } from './codes.js';
 import { outbox } from '../outbox.js';
 
@@ -15,7 +18,30 @@ function FilePicker({ onFiles }) {
     onFiles([...e.currentTarget.files]);
     e.currentTarget.value = '';
   };
+  // Zakázaný fotoaparát: Vyfotit a Natočit by tiše nic neudělaly, tak to rovnou říct (jen Android)
+  const { toast } = useApp();
+  const [camera, setCamera] = useCameraPermission();
+  const [checking, setChecking] = useState(false);
+  async function recheck() {
+    setChecking(true);
+    try {
+      const r = await requestCamera();
+      setCamera(r === 'error' ? null : r);
+      if (r === 'granted') toast('Fotoaparát povolen.');
+    } finally {
+      setChecking(false);
+    }
+  }
   return html`
+    ${camera === 'denied' && html`
+      <div class="warn camera-warn"><${Icon} name="alert" size=${16} />
+        <div>
+          <b>Fotoaparát je zakázaný</b> – Vyfotit a Natočit nepůjdou, z galerie ano. Povolíte ho takto:
+          <${CameraSteps} />
+          <button type="button" class="btn" disabled=${checking} onClick=${recheck}>
+            ${checking ? 'Ověřuji…' : 'Zkontrolovat znovu'}</button>
+        </div>
+      </div>`}
     <div class="file-buttons">
       <label class="btn"><${Icon} name="camera" /> Vyfotit
         <input type="file" accept="image/*" capture="environment" hidden onChange=${pick} /></label>

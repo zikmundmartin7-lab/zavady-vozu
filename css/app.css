@@ -644,7 +644,13 @@ fieldset.field .check-row { margin: .45rem 0; color: var(--text); font-weight: 5
 .chip-btn:has(.group-slang) { border-radius: 14px; padding: .35rem .9rem; line-height: 1.15; }
 
 /* Nabídka upozornění a přidání na plochu (úvodní obrazovka, přihlášení) */
-.push-offer, .install-offer { margin-bottom: 14px; border-left: 5px solid var(--primary); }
-.push-offer p, .install-offer p { margin: .3rem 0 .6rem; }
-.install-offer .hint { margin: 0; }
+.push-offer, .install-offer, .camera-offer { margin-bottom: 14px; border-left: 5px solid var(--primary); }
+.push-offer p, .install-offer p, .camera-offer p { margin: .3rem 0 .6rem; }
+.install-offer .hint, .camera-offer .hint { margin: 0; }
 .inline-icon { vertical-align: -3px; margin: 0 3px; }
+
+/* ───── Fotoaparát: povolení (karta na úvodní obrazovce, upozornění ve formuláři) ───── */
+.camera-steps { margin: .4rem 0 .6rem; padding-left: 1.2rem; }
+.camera-steps li { margin: .25rem 0; }
+.camera-warn > svg { flex: none; margin-top: .15rem; }
+.camera-warn .btn { margin-top: .1rem; }
