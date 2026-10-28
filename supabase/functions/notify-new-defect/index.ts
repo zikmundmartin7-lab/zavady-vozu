@@ -1,6 +1,6 @@
 // Supabase Edge Function: push upozornění do telefonů.
 //   { defect_id }      – nová závada → všem ostatním schváleným uživatelům (volá createDefect po uložení)
-//   { new_user: true } – nový uživatel se zaregistroval → správcům, ať ho schválí (volá signUp)
+//   { new_user: true } – nový uživatel se zaregistroval → administrátorům, ať ho schválí (volá signUp)
 //   { comment_id }     – nový komentář → autorovi závady a všem, kdo už u ní komentovali (volá addComment)
 //   { test: true }     – zkušební upozornění jen na zařízení přihlášeného uživatele
 //
@@ -76,7 +76,7 @@ Deno.serve(async (req) => {
     }));
   }
 
-  // Nový uživatel čeká na schválení → upozornit správce (jen hned po registraci, jen za sebe)
+  // Nový uživatel čeká na schválení → upozornit administrátory (jen hned po registraci, jen za sebe)
   if (body.new_user) {
     const { data: p } = await admin.from('profiles')
       .select('id, full_name, email, role, created_at').eq('id', user.id).maybeSingle();

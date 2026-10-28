@@ -387,7 +387,7 @@ export function DefectCard({ d, wagon = null, showComments = true, isNew = false
           ? html`<span class="chip chip-ok"><${Icon} name="check" size=${14} /> Opraveno</span>`
           : html`<span class="chip chip-open">Neopravená</span>`}
         ${d.defect_code && html`<span class="chip chip-code" title="Kód závady dle přílohy 9 VSP">kód ${d.defect_code}</span>`}
-        ${resolved && html`<span class="chip chip-lock" title="Opravená závada je zamčená – upravit ji může jen správce"><${Icon} name="lock" size=${13} /> zamčeno</span>`}
+        ${resolved && html`<span class="chip chip-lock" title="Opravená závada je zamčená – upravit ji může jen administrátor"><${Icon} name="lock" size=${13} /> zamčeno</span>`}
         <span class="spacer"></span>
         <span class="muted small" title="Datum a čas zjištění">zjištěno ${formatDateTime(foundAt)}</span>
       </div>

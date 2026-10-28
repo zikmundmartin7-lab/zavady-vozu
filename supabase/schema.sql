@@ -10,10 +10,10 @@ do $$ begin
 end $$;
 
 -- ───────────────────────── Uživatelé a role ─────────────────────────
--- pending  = čeká na schválení správcem (nevidí žádná data)
+-- pending  = čeká na schválení administrátorem (nevidí žádná data)
 -- user     = vozmistr (zakládá závady, komentuje, své závady i označí jako opravené)
--- repairer = opravář (navíc označuje jako opravené i cizí závady)
--- admin    = správce (vše + úpravy cizích závad, správa uživatelů)
+-- repairer = správce (dřív „opravář“; navíc označuje jako opravené i cizí závady)
+-- admin    = administrátor (vše + úpravy cizích závad, správa uživatelů)
 
 create table public.profiles (
   id          uuid primary key references auth.users on delete cascade,
@@ -40,7 +40,7 @@ language sql stable as $$ select coalesce(public.my_role() = 'admin', false) $$;
 create or replace function public.can_resolve() returns boolean
 language sql stable as $$ select coalesce(public.my_role() in ('repairer', 'admin'), false) $$;
 
--- Nový účet: první registrovaný uživatel je správce, ostatní čekají na schválení.
+-- Nový účet: první registrovaný uživatel je administrátor, ostatní čekají na schválení.
 create or replace function public.handle_new_user() returns trigger
 language plpgsql security definer set search_path = '' as $$
 begin
@@ -58,15 +58,15 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
--- Roli smí měnit jen správce (vlastní jméno si upraví každý sám).
+-- Roli smí měnit jen administrátor (vlastní jméno si upraví každý sám).
 create or replace function public.protect_profile() returns trigger
 language plpgsql as $$
 begin
   if new.role is distinct from old.role and not public.is_admin() then
-    raise exception 'Roli může změnit jen správce.';
+    raise exception 'Roli může změnit jen administrátor.';
   end if;
   if new.id = auth.uid() and old.role = 'admin' and new.role <> 'admin' then
-    raise exception 'Správce si nemůže odebrat vlastní roli.';
+    raise exception 'Administrátor si nemůže odebrat vlastní roli.';
   end if;
   new.email := old.email;
   return new;
@@ -127,8 +127,8 @@ create index defects_wagon_idx on public.defects (wagon_id);
 create index defects_open_idx on public.defects (wagon_id) where resolved_at is null;
 
 -- Kdo smí co měnit:
---   text, kód závady, datum zjištění → autor závady nebo správce; po opravě (zamčeno) jen správce
---   opraveno / vrátit               → autor závady, opravář nebo správce
+--   text, kód závady, datum zjištění → autor závady nebo administrátor; po opravě (zamčeno) jen administrátor
+--   opraveno / vrátit               → autor závady, správce nebo administrátor
 -- Datum zjištění nesmí být v budoucnosti (rezerva 5 min na nepřesné hodiny v telefonu)
 -- a u opravené závady nesmí být pozdější než oprava. Čas vložení a čas opravy určuje server.
 create or replace function public.prepare_defect() returns trigger
@@ -162,11 +162,11 @@ begin
   resolution_changed := new.resolved_at is distinct from old.resolved_at
                         or new.resolution_note is distinct from old.resolution_note;
   if content_changed and not (old.created_by = auth.uid() or public.is_admin()) then
-    raise exception 'Závadu může upravit jen ten, kdo ji vložil, nebo správce.';
+    raise exception 'Závadu může upravit jen ten, kdo ji vložil, nebo administrátor.';
   end if;
-  -- Opravená závada je zamčená: měnit ji smí jen správce (nebo ji nejdřív vrátit mezi neopravené)
+  -- Opravená závada je zamčená: měnit ji smí jen administrátor (nebo ji nejdřív vrátit mezi neopravené)
   if content_changed and old.resolved_at is not null and not public.is_admin() then
-    raise exception 'Opravená závada je zamčená. Upravit ji může jen správce, nebo ji nejdřív vraťte mezi neopravené.';
+    raise exception 'Opravená závada je zamčená. Upravit ji může jen administrátor, nebo ji nejdřív vraťte mezi neopravené.';
   end if;
   if new.found_at is distinct from old.found_at then
     if new.found_at > now() + interval '5 minutes' then
@@ -178,7 +178,7 @@ begin
   end if;
   if resolution_changed then
     if not (public.can_resolve() or old.created_by = auth.uid()) then
-      raise exception 'Závadu může označit jako opravenou jen její autor, opravář nebo správce.';
+      raise exception 'Závadu může označit jako opravenou jen její autor, správce nebo administrátor.';
     end if;
     if old.resolved_at is null and new.resolved_at is not null then new.resolved_at := now(); end if;
     new.resolved_by := case when new.resolved_at is null then null else auth.uid() end;
@@ -370,7 +370,7 @@ create table if not exists public.regulations (
 
 -- ───────────────────────── Historie změn a koš ─────────────────────────
 -- Každá změna (vložení, úprava, smazání, obnovení) se zapíše do audit_log i s původními a novými hodnotami.
--- Smazané záznamy zůstávají v audit_log navždy – to je „koš“; správce je může obnovit (restore_deleted).
+-- Smazané záznamy zůstávají v audit_log navždy – to je „koš“; administrátor je může obnovit (restore_deleted).
 -- Všechno smazané jednou akcí (např. vůz i s jeho závadami) má stejné číslo transakce (tx).
 
 create table if not exists public.audit_log (
@@ -439,7 +439,7 @@ drop trigger if exists profiles_audit on public.profiles;
 create trigger profiles_audit after insert or update or delete on public.profiles
   for each row execute function public.audit_row();
 
--- Obnovení smazaných záznamů z koše (jen správce): vrátí vše, co se smazalo jednou akcí (tx),
+-- Obnovení smazaných záznamů z koše (jen administrátor): vrátí vše, co se smazalo jednou akcí (tx),
 -- ve správném pořadí (vůz → závady → přílohy a komentáře). Soubory (fotky, PDF) se při mazání neodstraňují.
 create or replace function public.restore_deleted(p_tx bigint) returns integer
 language plpgsql security definer set search_path = '' as $$
@@ -449,7 +449,7 @@ declare
   n integer := 0;
 begin
   if not public.is_admin() then
-    raise exception 'Obnovit smazané záznamy může jen správce.';
+    raise exception 'Obnovit smazané záznamy může jen administrátor.';
   end if;
   perform set_config('app.restoring', '1', true);
   for r in
@@ -474,7 +474,7 @@ begin
 end $$;
 
 -- ───────────────────────── Pravidelné exporty na e-mail ─────────────────────────
--- Nastavuje správce v aplikaci, rozesílá server (server/zavady.py exports) každou hodinu.
+-- Nastavuje administrátor v aplikaci, rozesílá server (server/zavady.py exports) každou hodinu.
 
 create table if not exists public.export_schedules (
   id            uuid primary key default gen_random_uuid(),
@@ -508,6 +508,7 @@ alter table public.export_schedules   enable row level security;
 alter table public.wagon_seen         enable row level security;
 alter table public.comment_seen       enable row level security;
 
+-- „správce“ v názvech pravidel = role admin (v aplikaci od verze 42 „Administrátor“); názvy zůstaly kvůli živé databázi
 create policy "prohlédnuté vozy: jen vlastní" on public.wagon_seen
   for select to authenticated using (user_id = (select auth.uid()));
 create policy "přečtené komentáře: jen vlastní" on public.comment_seen
@@ -603,7 +604,7 @@ create policy "soubory: mazání vlastník nebo správce" on storage.objects
   for delete to authenticated using (
     bucket_id = 'attachments' and (owner = auth.uid() or public.is_admin()));
 
--- Předpisy: soukromý bucket jen pro PDF; číst smí schválení uživatelé, nahrávat a mazat správce.
+-- Předpisy: soukromý bucket jen pro PDF; číst smí schválení uživatelé, nahrávat a mazat administrátor.
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('predpisy', 'predpisy', false, 52428800, array['application/pdf'])
 on conflict (id) do nothing;
@@ -619,7 +620,7 @@ create policy "předpisy: mazání správce" on storage.objects
   for delete to authenticated using (bucket_id = 'predpisy' and public.is_admin());
 
 -- Obrázky z katalogu závad (příloha 9 VSP): soukromý bucket, název souboru = kód_pořadí.png.
--- Číst smí schválení uživatelé, nahrávat (i přepsat) a mazat správce.
+-- Číst smí schválení uživatelé, nahrávat (i přepsat) a mazat administrátor.
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('katalog', 'katalog', false, 5242880, array['image/png', 'image/jpeg', 'image/webp'])
 on conflict (id) do nothing;

@@ -61,7 +61,7 @@ function CodeTextSearch({ value, onInput, placeholder }) {
     </label>`;
 }
 
-// Nahrání obrázků katalogu (jen správce): soubory pojmenované kód_pořadí.png
+// Nahrání obrázků katalogu (jen administrátor): soubory pojmenované kód_pořadí.png
 function ImageUpload({ count }) {
   const { api, toast, refresh } = useApp();
   const [busy, setBusy] = useState('');

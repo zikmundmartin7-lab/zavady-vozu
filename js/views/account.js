@@ -54,8 +54,8 @@ function RealLogin() {
         if (!name.trim()) throw new Error('Vyplňte jméno a příjmení.');
         const r = await api.signUp(email.trim(), password, name);
         setInfo(r.needsConfirmation
-          ? 'Hotovo. Na e-mail vám přišel odkaz pro potvrzení účtu. Po potvrzení musí účet ještě schválit správce.'
-          : 'Účet vytvořen. Teď ho musí schválit správce.');
+          ? 'Hotovo. Na e-mail vám přišel odkaz pro potvrzení účtu. Po potvrzení musí účet ještě schválit administrátor.'
+          : 'Účet vytvořen. Teď ho musí schválit administrátor.');
       }
       if (tab === 'reset') {
         await api.resetPassword(email.trim());
@@ -78,8 +78,8 @@ function RealLogin() {
         <button type="button" class="btn block choice-btn" onClick=${() => switchTab('login')}>
           <b>Už mám účet</b><span>přihlásit se</span></button>
         <p class="muted small">Přihlásit se jde, až když máte účet. Poprvé se proto nejdřív zaregistrujte –
-          po schválení správcem uvidíte vozy a závady.</p>
-        <p class="muted small">Účet vám založil správce a poslal heslo? Zvolte „Už mám účet“.</p>
+          po schválení administrátorem uvidíte vozy a závady.</p>
+        <p class="muted small">Účet vám založil administrátor a poslal heslo? Zvolte „Už mám účet“.</p>
       </div>`;
   }
 
@@ -92,7 +92,7 @@ function RealLogin() {
           Přihlásit<small>už mám účet</small></button>
       </div>
       ${tab === 'register' && html`
-        <p class="muted small form-intro">Vytvořte si účet. Pak ho ještě musí schválit správce.
+        <p class="muted small form-intro">Vytvořte si účet. Pak ho ještě musí schválit administrátor.
           Heslo je předvyplněné ${DEFAULT_PASSWORD} – můžete ho nechat, nebo napsat vlastní.</p>
         <label class="field">Jméno a příjmení
           <input autocomplete="name" value=${name} onInput=${(e) => setName(e.currentTarget.value)} required /></label>`}
@@ -148,7 +148,7 @@ export function PendingView() {
       <div class="logo"><img src="icons/icon.svg?v=2" alt="" width="72" height="72" /><h1>Závady vozů</h1></div>
       <div class="card">
         <h2>Účet čeká na schválení</h2>
-        <p>Dobrý den${me.full_name ? `, ${me.full_name}` : ''}. Váš účet zatím neschválil správce aplikace.
+        <p>Dobrý den${me.full_name ? `, ${me.full_name}` : ''}. Váš účet zatím neschválil administrátor aplikace.
           Jakmile ho schválí, uvidíte vozy a závady.</p>
         <div class="row">
           <button class="btn btn-primary" onClick=${reloadMe}>Zkontrolovat znovu</button>
@@ -299,7 +299,7 @@ export function AccountView() {
     </main>`;
 }
 
-// Změna hesla v Můj účet. U účtu založeného správcem (dočasné heslo) jen nabídka, ne povinnost.
+// Změna hesla v Můj účet. U účtu založeného administrátorem (dočasné heslo) jen nabídka, ne povinnost.
 function ChangePassword() {
   const { api, me, toast, reloadMe } = useApp();
   const [open, setOpen] = useState(false);
@@ -466,7 +466,7 @@ export function UsersView() {
   const users = useLoad(() => api.listProfiles(), []);
   const [creating, setCreating] = useState(false);
   const [created, setCreated] = useState(null); // { name, email, password, warning } – právě založený účet
-  if (!can.admin(me)) return html`<${TopBar} back="#/" title="Uživatelé" /><main class="page"><${Empty}>Jen pro správce.<//></main>`;
+  if (!can.admin(me)) return html`<${TopBar} back="#/" title="Uživatelé" /><main class="page"><${Empty}>Jen pro administrátora.<//></main>`;
   const list = [...(users.data ?? [])].sort((a, b) => (a.role === 'pending' ? 0 : 1) - (b.role === 'pending' ? 0 : 1));
 
   async function setRole(u, role) {
@@ -500,7 +500,7 @@ export function UsersView() {
             </select>
           </li>`)}
       </ul>
-      <p class="hint">Vozmistr: zakládá závady, komentuje a své závady může označit jako opravené. Opravář: navíc označuje jako opravené i cizí závady.
-        Správce: vše včetně úprav a mazání cizích závad a správy uživatelů.</p>
+      <p class="hint">Vozmistr: zakládá závady, komentuje a své závady může označit jako opravené. Správce: navíc označuje jako opravené i cizí závady.
+        Administrátor: vše včetně úprav a mazání cizích závad a správy uživatelů.</p>
     </main>`;
 }

@@ -9,9 +9,9 @@ Aplikace pro evidenci závad železničních vozů. Běží v prohlížeči na p
 - **Detail vozu:** aktivní závady (oranžově) s kódem, datem, textem, fotkami a videi. Opravené závady jsou zelené a skryté pod tlačítkem **Historie oprav**.
 - **Nová závada:** číslo vozu ve formátu `XX XX XXXX XXX-X` s kontrolou kontrolní číslice (UIC, Luhnův algoritmus). Nový vůz se založí automaticky, stačí vybrat skupinu. Fotky lze vyfotit, video natočit nebo obojí vybrat z galerie. Fotky se před nahráním zmenší.
 - **Kód závady podle přílohy 9 VSP** (nepovinný): 4 políčka pro úrovně kódu (např. 1.2.2.1, 6.1.1.12), tečky se doplňují samy. Pod polem se nabízí odpovídající kódy z katalogu a hledání podle konstrukční části i popisu závady (popis hledacího pole se v telefonu zalomí, je vidět celý). Tlačítkem **Vybrat z katalogu závad** jde katalog procházet po částech a úrovních a kód vybrat klepnutím; tlačítko Zpět v telefonu vrací o úroveň výš a rozepsaný formulář zůstane.
-- **Obrázky z katalogu** (náčrtky z přílohy 9 VSP) se ukazují u kódů při hledání i ve formuláři; klepnutím se zvětší. Nahrává je správce v záložce Kódy závad (soubory `kód_pořadí.png` z `tools/katalog_vsp9.py`).
-- **Záložky na hlavní obrazovce:** **Vozy**, **Kódy závad** (hledání v katalogu jedním polem – konstrukční část i závada najednou, i skloněné tvary slov) a **Předpisy** (PDF, nahrává správce, vidí jen schválení uživatelé).
-- **Datum a čas zjištění:** předvyplní se aktuální čas, ale jde zadat i zpětně (ne do budoucna). Měnit ho smí autor závady nebo správce. U zpětně zapsané závady karta ukazuje i skutečný čas zápisu.
+- **Obrázky z katalogu** (náčrtky z přílohy 9 VSP) se ukazují u kódů při hledání i ve formuláři; klepnutím se zvětší. Nahrává je administrátor v záložce Kódy závad (soubory `kód_pořadí.png` z `tools/katalog_vsp9.py`).
+- **Záložky na hlavní obrazovce:** **Vozy**, **Kódy závad** (hledání v katalogu jedním polem – konstrukční část i závada najednou, i skloněné tvary slov) a **Předpisy** (PDF, nahrává administrátor, vidí jen schválení uživatelé).
+- **Datum a čas zjištění:** předvyplní se aktuální čas, ale jde zadat i zpětně (ne do budoucna). Měnit ho smí autor závady nebo administrátor. U zpětně zapsané závady karta ukazuje i skutečný čas zápisu.
 - **Komentáře** k závadě ve stylu WhatsAppu, s živými aktualizacemi. Na nový komentář přijde upozornění autorovi závady a všem, kdo už ji komentovali (kromě pisatele); klepnutí otevře komentáře. Kdo má aplikaci otevřenou, uvidí ho přímo v ní (ne na právě otevřené závadě). Push posílá Edge Function `notify-new-defect` (`{ comment_id }`) – po její změně ji v Supabase znovu nasaďte. Nepřečtené komentáře ukazuje **kulaté tlačítko s bublinou a červeným číslem** nad tlačítkem Nová závada (úvodní obrazovka a skupina); klepnutí otevře seznam **Nové komentáře** (závada, počet, poslední komentář) a u závady je u komentářů štítek „2 nové“. Přečtené = otevřený detail závady, platí na všech zařízeních (tabulka `comment_seen`, pohled `comment_inbox`, skript `supabase/migrace_07_nove_komentare.sql`).
 - **Upozornění na novou závadu** přijde všem ostatním uživatelům jako push notifikace v telefonu i při zavřené aplikaci. Kdo má aplikaci otevřenou, uvidí upozornění přímo v ní. Na iPhonu a v Safari se upozornění z telefonu ukáže vždy (Safari vyžaduje, aby se každé push upozornění zobrazilo, jinak odběr zruší). Upozornění se posílají jako naléhavá (`urgency: high`), aby je Android doručil hned i zamčenému telefonu v úsporném režimu.
 - **Nové závady:** u skupin a vozů je červený odznak „2 nové“ = neopravené závady od ostatních, které uživatel ještě neviděl. Za prohlédnuté se počítají otevřením detailu vozu; tam mají ještě štítek **Nová**. Celkový počet ukazuje červený odznak u záložky **Přehled** (jako u aplikací v telefonu) a v přehledu jsou tyto závady tučně s červenou tečkou; po otevření vozu se změní na běžný vzhled. Každý uživatel má vlastní stav (tabulka `wagon_seen`).
@@ -20,19 +20,19 @@ Aplikace pro evidenci závad železničních vozů. Běží v prohlížeči na p
 - **Aplikace na plochu:** na přihlašovací obrazovce, při čekání na schválení a na úvodní obrazovce karta (`InstallOffer` v `js/ui.js`): v Chrome na Androidu tlačítko **Instalovat** (systémové okno, stačí potvrdit), v jiném prohlížeči nebo uvnitř WhatsAppu **Otevřít v Chrome**, na iPhonu postup Sdílet → Přidat na plochu. Sama se aplikace nainstalovat nemůže – prohlížeče to nedovolí. „Teď ne“ skryje kartu na tomto zařízení na týden; v nainstalované aplikaci se neukazuje.
 - **Nová verze aplikace:** po sloučení do `main` ji GitHub Pages do minuty zveřejní. Aplikace se na ni ptá při spuštění, při návratu do aplikace (nejvýš jednou za 10 minut) a při stažení dolů; nová verze se stáhne na pozadí a nabídne se „Je k dispozici nová verze“. Ručně: **Můj účet → Aktualizovat** (stáhne a načte bez zavírání aplikace). Číslo verze je v `js/version.js` a v `sw.js` (`CACHE`) – zvyšují se spolu. Soubory nové verze service worker stahuje přímo z webu (mimo mezipaměť prohlížeče a GitHubu) a až do další verze je vydává jen z paměti telefonu; bez zvýšení čísla se tedy změna k uživatelům nedostane. Skripty a styly načítá `index.html` s razítkem v adrese (`?r=…`), které se mění při znovunačtení po aktualizaci (`reloadApp`) – iPhone by jinak v běžící aplikaci spustil znovu staré skripty ze své paměti. Nový modul je proto potřeba přidat do seznamu v `index.html` i do `SHELL` v `sw.js`.
 - **Obnovení stažením dolů:** na začátku stránky stáhnout prstem dolů – odešlou se čekající závady, stáhne se vše znovu a zkontroluje se nová verze aplikace.
-- **Upozornění na nového uživatele:** po registraci přijde správcům „Nový uživatel čeká na schválení“, klepnutí otevře Správu uživatelů.
-- **Základní heslo 123456** (`DEFAULT_PASSWORD` v `js/model.js`): předvyplněné při registraci i při založení účtu správcem, jde přepsat. Změna hesla je nepovinná: po prvním přihlášení se základním heslem se jednou nabídne, v Můj účet → **Změnit heslo** ji má každý (příznak `temp_password` v user_metadata).
-- **Účet založený správcem:** Správa uživatelů → **Založit účet** (jméno, e-mail, role, heslo). Účet je hned potvrzený i schválený, přihlašovací údaje se pošlou tlačítkem WhatsApp (Edge Function `create-user`).
+- **Upozornění na nového uživatele:** po registraci přijde administrátorům „Nový uživatel čeká na schválení“, klepnutí otevře Správu uživatelů.
+- **Základní heslo 123456** (`DEFAULT_PASSWORD` v `js/model.js`): předvyplněné při registraci i při založení účtu administrátorem, jde přepsat. Změna hesla je nepovinná: po prvním přihlášení se základním heslem se jednou nabídne, v Můj účet → **Změnit heslo** ji má každý (příznak `temp_password` v user_metadata).
+- **Účet založený administrátorem:** Správa uživatelů → **Založit účet** (jméno, e-mail, role, heslo). Účet je hned potvrzený i schválený, přihlašovací údaje se pošlou tlačítkem WhatsApp (Edge Function `create-user`).
 - **Oprávnění** hlídá přímo databáze:
 
 | Role | Co smí |
 |---|---|
 | Čeká na schválení | nic, jen vidí, že čeká (takto lze účet i zablokovat) |
 | Vozmistr | zakládá vozy a závady, komentuje, **svoje** závady upravuje, maže a označuje jako opravené |
-| Opravář | navíc označuje jako opravené (zeleně) i **cizí** závady a vrací je zpět |
-| Správce | vše, včetně úprav a mazání cizích závad, změny skupiny vozu, mazání vozů a schvalování uživatelů |
+| Správce | navíc označuje jako opravené (zeleně) i **cizí** závady a vrací je zpět |
+| Administrátor | vše, včetně úprav a mazání cizích závad, změny skupiny vozu, mazání vozů a schvalování uživatelů |
 
-První registrovaný uživatel se automaticky stane správcem. Další čekají na jeho schválení (Můj účet → Správa uživatelů).
+První registrovaný uživatel se automaticky stane administrátorem. Další čekají na jeho schválení (Můj účet → Správa uživatelů).
 
 ## Vyzkoušení (ukázkový režim)
 
@@ -42,7 +42,7 @@ Dokud v `js/config.js` není vyplněné Supabase, aplikace běží v **ukázkov�
 python3 -m http.server 8765
 ```
 
-Pak otevřete <http://localhost:8765>. Na přihlašovací obrazovce lze vybrat roli (správce, opravář, uživatel, čekající). Pokud otevřete aplikaci ve dvou kartách jako dva různí uživatelé, uvidíte i upozornění na novou závadu.
+Pak otevřete <http://localhost:8765>. Na přihlašovací obrazovce lze vybrat roli (administrátor, správce, vozmistr, čekající). Pokud otevřete aplikaci ve dvou kartách jako dva různí uživatelé, uvidíte i upozornění na novou závadu.
 
 ## Ostrý provoz: krok za krokem
 
@@ -53,7 +53,7 @@ Data se ukládají v [Supabase](https://supabase.com): databázi, přihlašován
 3. **Propojte aplikaci:** Project Settings → API zkopírujte *Project URL* a *anon public* klíč do `js/config.js`. Anon klíč je veřejný a smí být v aplikaci, data chrání pravidla v databázi.
 4. **Zveřejněte aplikaci** na adrese s HTTPS (bez HTTPS nejde instalace ani upozornění). Zdarma to jde třeba přes Netlify (přetáhnout složku na app.netlify.com/drop), Cloudflare Pages nebo GitHub Pages. Nahrává se celá složka, nic se nesestavuje.
 5. **Nastavte adresu v Supabase:** Authentication → URL Configuration → *Site URL* = adresa aplikace. Odkazy v e-mailech (potvrzení účtu, zapomenuté heslo) pak vedou správně.
-6. **Zaregistrujte se jako první.** Stanete se správcem.
+6. **Zaregistrujte se jako první.** Stanete se administrátorem.
 
 ### Push upozornění na telefon
 
@@ -61,7 +61,7 @@ Data se ukládají v [Supabase](https://supabase.com): databázi, přihlašován
 2. Veřejný klíč vložte do `js/config.js` (`VAPID_PUBLIC_KEY`).
 3. V Supabase: Edge Functions → Secrets → přidejte `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` a `VAPID_SUBJECT` (`mailto:` + váš e-mail).
 4. Edge Functions → Deploy a new function → Via Editor → název **`notify-new-defect`** → vložte obsah `supabase/functions/notify-new-defect/index.ts` → Deploy. V nastavení funkce vypněte kontrolu JWT (funkce si přihlášení ověřuje sama).
-5. Stejně nasaďte funkci pro zakládání účtů správcem (obsah `supabase/functions/create-user/index.ts`, kontrola JWT vypnutá). V tomto projektu běží pod názvem **`clever-task`** – při jiném názvu upravte `createUser` v `js/api/supabase.js`.
+5. Stejně nasaďte funkci pro zakládání účtů administrátorem (obsah `supabase/functions/create-user/index.ts`, kontrola JWT vypnutá). V tomto projektu běží pod názvem **`clever-task`** – při jiném názvu upravte `createUser` v `js/api/supabase.js`.
 6. Po přihlášení aplikace na úvodní obrazovce sama nabídne **Zapnout** (karta `PushOffer` v `js/ui.js`); po povolení hned přijde zkušební upozornění. Odmítnutou nabídku jde dohnat v Můj účet → **Zapnout upozornění**. Když telefon upozornění už dřív povolil (nové přihlášení, přeinstalace), zapnou se samy bez ptaní – kromě ručně vypnutých v Můj účet. Na iPhonu v Safari upozornění nejdou – tam místo toho radí karta **Aplikace na plochu**.
 
 ## Instalace na Android
@@ -78,12 +78,12 @@ Později lze ze stejné aplikace vytvořit i instalační soubor APK nebo ji dá
 
 ## Historie, koš, exporty a zálohy
 
-- **Historie změn:** každá změna závady, vozu, fotky, komentáře, předpisu i role uživatele se zapisuje do tabulky `audit_log` (kdo, kdy, co bylo předtím a potom). U závady: **Historie změn**, pro správce celkový přehled v **Můj účet → Historie změn**.
-- **Koš:** smazané záznamy zůstávají navždy v historii a správce je obnoví v **Můj účet → Koš** (obnoví se celá akce, např. vůz i se závadami). Soubory se při mazání neodstraňují.
-- **Zamčení:** opravenou závadu může měnit nebo smazat jen správce; ostatní ji nejdřív musí vrátit mezi neopravené. Komentovat jde dál.
+- **Historie změn:** každá změna závady, vozu, fotky, komentáře, předpisu i role uživatele se zapisuje do tabulky `audit_log` (kdo, kdy, co bylo předtím a potom). U závady: **Historie změn**, pro administrátora celkový přehled v **Můj účet → Historie změn**.
+- **Koš:** smazané záznamy zůstávají navždy v historii a administrátor je obnoví v **Můj účet → Koš** (obnoví se celá akce, např. vůz i se závadami). Soubory se při mazání neodstraňují.
+- **Zamčení:** opravenou závadu může měnit nebo smazat jen administrátor; ostatní ji nejdřív musí vrátit mezi neopravené. Komentovat jde dál.
 - **Přehled a export:** záložka **Přehled** (všechny závady s filtry, i více skupin najednou) a tlačítko **Export do Excelu**. V Excelu je list se všemi závadami a k tomu list pro každou skupinu. Pravidelný export na e-mail jde omezit na vybrané skupiny.
 - **Zápis bez signálu:** závada uložená bez připojení čeká v telefonu a odešle se sama.
-- **Server** (`server/`, běží na stejném serveru jako chatbot): každou noc ve 2:30 záloha databáze (`pg_dump`) a všech souborů do `/var/backups/zavady`, každou hodinu rozeslání pravidelných exportů (nastavuje správce v **Můj účet → Pravidelné exporty**). E-maily jdou přes Gmail (heslo pro aplikace). Nahrání: vyplnit `server/.env` podle `server/.env.example` a spustit `server/deploy.sh root@2.31.44.49`.
+- **Server** (`server/`, běží na stejném serveru jako chatbot): každou noc ve 2:30 záloha databáze (`pg_dump`) a všech souborů do `/var/backups/zavady`, každou hodinu rozeslání pravidelných exportů (nastavuje administrátor v **Můj účet → Pravidelné exporty**). E-maily jdou přes Gmail (heslo pro aplikace). Nahrání: vyplnit `server/.env` podle `server/.env.example` a spustit `server/deploy.sh root@2.31.44.49`.
 
 ## Limity a náklady
 
@@ -106,7 +106,7 @@ js/api/supabase.js | demo.js              ostrá data | ukázková data v prohl�
 js/ui.js, js/views/*.js                   obrazovky (Preact + htm, bez sestavování)
 supabase/schema.sql                       tabulky, oprávnění (RLS), úložiště
 supabase/functions/notify-new-defect/     rozesílání push upozornění
-supabase/functions/create-user/           správce zakládá účty s heslem (bez potvrzovacího e-mailu)
+supabase/functions/create-user/           administrátor zakládá účty s heslem (bez potvrzovacího e-mailu)
 supabase/oprava_*.sql, migrace_*.sql      jednorázové opravy a úpravy databáze
 server/                                   noční zálohy a pravidelné exporty na e-mail (služba na serveru)
 tools/katalog_vsp9.py                     převod katalogu závad z PDF přílohy 9 VSP (výstup do private/, mimo GitHub)

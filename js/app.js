@@ -165,7 +165,7 @@ function App() {
     };
   }, []);
 
-  // Správce: počet uživatelů čekajících na schválení (tečka u ikony účtu)
+  // Administrátor: počet uživatelů čekajících na schválení (tečka u ikony účtu)
   useEffect(() => {
     if (!can.admin(me)) { setPendingUsers(0); return; }
     api.listProfiles().then((p) => setPendingUsers(p.filter((u) => u.role === 'pending').length), () => {});

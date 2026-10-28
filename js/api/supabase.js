@@ -167,7 +167,7 @@ export const api = {
     const user = data.session?.user;
     if (!user) return null;
     const p = check(await sb.from('profiles').select('*').eq('id', user.id).maybeSingle());
-    // temp_password: účet založil správce (funkce create-user) a heslo zatím nikdo nezměnil
+    // temp_password: účet založil administrátor (funkce create-user) a heslo zatím nikdo nezměnil
     return { ...(p ?? { id: user.id, email: '', full_name: '', role: 'pending' }), temp_password: user.user_metadata?.temp_password === true };
   },
   onAuthChange(cb) {
@@ -181,7 +181,7 @@ export const api = {
     const r = check(await sb.auth.signUp({
       email, password, options: { data: { full_name: fullName.trim(), temp_password: password === DEFAULT_PASSWORD }, emailRedirectTo: appUrl() },
     }));
-    // Správcům přijde upozornění, že nový uživatel čeká na schválení (jde jen s přihlášením hned po registraci)
+    // Administrátorům přijde upozornění, že nový uživatel čeká na schválení (jde jen s přihlášením hned po registraci)
     if (r.session) sb.functions.invoke('notify-new-defect', { body: { new_user: true } }).catch(() => {});
     return { needsConfirmation: !r.session };
   },
@@ -394,7 +394,7 @@ export const api = {
     return new Map(rows.map((w) => [w.id, w.number]));
   },
 
-  // Pravidelné exporty na e-mail (nastavuje správce, rozesílá server)
+  // Pravidelné exporty na e-mail (nastavuje administrátor, rozesílá server)
   async listExportSchedules() {
     return check(await sb.from('export_schedules').select('*').order('created_at'));
   },
@@ -458,7 +458,7 @@ export const api = {
   async setRole(id, role) {
     check(await sb.from('profiles').update({ role }).eq('id', id));
   },
-  // Účet za kolegu s dočasným heslem (jen správce; účet je hned potvrzený a schválený).
+  // Účet za kolegu s dočasným heslem (jen administrátor; účet je hned potvrzený a schválený).
   // Kód je v supabase/functions/create-user, v Supabase je funkce nasazená pod názvem clever-task.
   async createUser({ email, fullName, role, password }) {
     const { data, error } = await sb.functions.invoke('clever-task', {

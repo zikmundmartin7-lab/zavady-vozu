@@ -161,8 +161,8 @@ export function DefectFormView({ editId, params }) {
   }
   if (editId && existingDefect.data && !can.editDefect(me, existingDefect.data)) {
     const msg = can.edit(me, existingDefect.data)
-      ? 'Opravená závada je zamčená. Upravit ji může jen správce, nebo ji nejdřív vraťte mezi neopravené.'
-      : 'Závadu může upravit jen ten, kdo ji vložil, nebo správce.';
+      ? 'Opravená závada je zamčená. Upravit ji může jen administrátor, nebo ji nejdřív vraťte mezi neopravené.'
+      : 'Závadu může upravit jen ten, kdo ji vložil, nebo administrátor.';
     return html`<${TopBar} back="#/vuz/${existingDefect.data.wagon_id}" title="Upravit závadu" />
       <main class="page"><${ErrorBox} error=${new Error(msg)} /></main>`;
   }

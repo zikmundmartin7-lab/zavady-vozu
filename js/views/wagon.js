@@ -1,4 +1,4 @@
-// Detail vozu: aktivní závady, skrytá historie oprav, správa vozu pro správce.
+// Detail vozu: aktivní závady, skrytá historie oprav, správa vozu pro administrátora.
 
 import { html, useEffect, useRef, useState } from '../../vendor/preact-htm.js';
 import { can, checkDigit, formatNumber, foundAtOf, groupLabel, isValidCheckDigit, plural } from '../model.js';

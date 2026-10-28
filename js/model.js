@@ -46,23 +46,23 @@ export function matchesQuery(number, q) {
 // Na jeden řádek se píšou oba: „Faccpp – Choper“ (stejně jako group_name z databáze).
 export const groupLabel = (g) => [g?.name, g?.slang].filter(Boolean).join(' – ');
 
-// Základní heslo nového účtu (předvyplněné v registraci i při založení správcem); změnit ho jde, ale nemusí se
+// Základní heslo nového účtu (předvyplněné v registraci i při založení administrátorem); změnit ho jde, ale nemusí se
 export const DEFAULT_PASSWORD = '123456';
 
 export const ROLES = {
   pending: 'Čeká na schválení',
   user: 'Vozmistr',
-  repairer: 'Opravář',
-  admin: 'Správce',
+  repairer: 'Správce',
+  admin: 'Administrátor',
 };
 
 export const can = {
   use: (me) => ['user', 'repairer', 'admin'].includes(me?.role),
   admin: (me) => me?.role === 'admin',
-  // Opravu (zelenou) označí opravář, správce, nebo autor u své vlastní závady.
+  // Opravu (zelenou) označí správce, administrátor, nebo autor u své vlastní závady.
   resolve: (me, defect) => can.use(me) && (['repairer', 'admin'].includes(me.role) || defect?.created_by === me.id),
   edit: (me, defect) => !!me && (defect.created_by === me.id || me.role === 'admin'),
-  // Opravená závada je zamčená: upravit nebo smazat ji smí jen správce
+  // Opravená závada je zamčená: upravit nebo smazat ji smí jen administrátor
   editDefect: (me, defect) => can.edit(me, defect) && (!defect.resolved_at || me.role === 'admin'),
   deleteComment: (me, c) => !!me && (c.author_id === me.id || me.role === 'admin'),
 };

@@ -272,7 +272,7 @@ export const api = {
     return wagonOverview(w);
   },
   async updateWagon(id, patch) {
-    if (!can.admin(me())) throw new Error('Vůz může upravit jen správce.');
+    if (!can.admin(me())) throw new Error('Vůz může upravit jen administrátor.');
     const w = state.wagons.find((x) => x.id === id);
     const old = { ...w };
     Object.assign(w, patch);
@@ -280,7 +280,7 @@ export const api = {
     commit();
   },
   async deleteWagon(id) {
-    if (!can.admin(me())) throw new Error('Vůz může smazat jen správce.');
+    if (!can.admin(me())) throw new Error('Vůz může smazat jen administrátor.');
     // smazané jde do koše (historie), fotky zůstávají, aby šlo vše obnovit
     const tx = newTx();
     const defects = state.defects.filter((d) => d.wagon_id === id);
@@ -321,8 +321,8 @@ export const api = {
   },
   async updateDefect(id, { description, found_at, defect_code }, newFiles = [], removeIds = [], onProgress) {
     const d = findDefect(id);
-    if (!can.edit(me(), d)) throw new Error('Závadu může upravit jen ten, kdo ji vložil, nebo správce.');
-    if (!can.editDefect(me(), d)) throw new Error('Opravená závada je zamčená. Upravit ji může jen správce, nebo ji nejdřív vraťte mezi neopravené.');
+    if (!can.edit(me(), d)) throw new Error('Závadu může upravit jen ten, kdo ji vložil, nebo administrátor.');
+    if (!can.editDefect(me(), d)) throw new Error('Opravená závada je zamčená. Upravit ji může jen administrátor, nebo ji nejdřív vraťte mezi neopravené.');
     const problem = found_at && checkFoundAt(found_at, d.resolved_at);
     if (problem) throw new Error(problem);
     const tx = newTx();
@@ -337,7 +337,7 @@ export const api = {
   async deleteDefect(id) {
     const d = findDefect(id);
     if (!can.editDefect(me(), d)) {
-      throw new Error(d.resolved_at ? 'Opravenou závadu může smazat jen správce.' : 'Závadu může smazat jen ten, kdo ji vložil, nebo správce.');
+      throw new Error(d.resolved_at ? 'Opravenou závadu může smazat jen administrátor.' : 'Závadu může smazat jen ten, kdo ji vložil, nebo administrátor.');
     }
     const tx = newTx();
     removeRows(tx, 'attachments', state.attachments.filter((a) => a.defect_id === id));
@@ -347,7 +347,7 @@ export const api = {
   },
   async resolveDefect(id, note) {
     const d = findDefect(id);
-    if (!can.resolve(me(), d)) throw new Error('Závadu může označit jako opravenou jen její autor, opravář nebo správce.');
+    if (!can.resolve(me(), d)) throw new Error('Závadu může označit jako opravenou jen její autor, správce nebo administrátor.');
     const old = { ...d };
     Object.assign(d, { resolved_at: new Date().toISOString(), resolved_by: me().id, resolution_note: note?.trim() || null });
     audit(newTx(), 'defects', 'update', old, d);
@@ -355,7 +355,7 @@ export const api = {
   },
   async reopenDefect(id) {
     const d = findDefect(id);
-    if (!can.resolve(me(), d)) throw new Error('Závadu může vrátit jen její autor, opravář nebo správce.');
+    if (!can.resolve(me(), d)) throw new Error('Závadu může vrátit jen její autor, správce nebo administrátor.');
     const old = { ...d };
     Object.assign(d, { resolved_at: null, resolved_by: null, resolution_note: null });
     audit(newTx(), 'defects', 'update', old, d);
@@ -417,7 +417,7 @@ export const api = {
     return state.audit.filter((a) => a.action === 'delete' && !a.restored_at).reverse();
   },
   async restoreDeleted(tx) {
-    if (!can.admin(me())) throw new Error('Obnovit smazané záznamy může jen správce.');
+    if (!can.admin(me())) throw new Error('Obnovit smazané záznamy může jen administrátor.');
     const order = { wagons: 1, defects: 2 };
     const items = state.audit.filter((a) => a.tx === tx && a.action === 'delete' && !a.restored_at)
       .sort((a, b) => (order[a.tbl] ?? 4) - (order[b.tbl] ?? 4) || a.id - b.id);
@@ -441,17 +441,17 @@ export const api = {
 
   // Pravidelné exporty (v ukázce se jen ukládají, nerozesílají)
   async listExportSchedules() {
-    if (!can.admin(me())) throw new Error('Jen pro správce.');
+    if (!can.admin(me())) throw new Error('Jen pro administrátora.');
     return state.schedules;
   },
   async saveExportSchedule({ id, ...fields }) {
-    if (!can.admin(me())) throw new Error('Jen pro správce.');
+    if (!can.admin(me())) throw new Error('Jen pro administrátora.');
     if (id) Object.assign(state.schedules.find((x) => x.id === id), fields);
     else state.schedules.push({ id: uid(), created_at: new Date().toISOString(), last_sent_at: null, active: true, ...fields });
     commit();
   },
   async deleteExportSchedule(id) {
-    if (!can.admin(me())) throw new Error('Jen pro správce.');
+    if (!can.admin(me())) throw new Error('Jen pro administrátora.');
     state.schedules = state.schedules.filter((x) => x.id !== id);
     commit();
   },
@@ -498,7 +498,7 @@ export const api = {
   },
   async deleteComment(id) {
     const c = state.comments.find((x) => x.id === id);
-    if (!can.deleteComment(me(), c)) throw new Error('Komentář může smazat jen autor nebo správce.');
+    if (!can.deleteComment(me(), c)) throw new Error('Komentář může smazat jen autor nebo administrátor.');
     removeRows(newTx(), 'comments', [c]);
     commit({ comment: c.defect_id });
   },
@@ -522,8 +522,8 @@ export const api = {
   },
   async setRole(id, role) {
     const m = me();
-    if (!can.admin(m)) throw new Error('Roli může změnit jen správce.');
-    if (id === m.id && role !== 'admin') throw new Error('Správce si nemůže odebrat vlastní roli.');
+    if (!can.admin(m)) throw new Error('Roli může změnit jen administrátor.');
+    if (id === m.id && role !== 'admin') throw new Error('Administrátor si nemůže odebrat vlastní roli.');
     const p = state.profiles.find((x) => x.id === id);
     const old = { ...p };
     p.role = role;
@@ -531,7 +531,7 @@ export const api = {
     commit();
   },
   async createUser({ email, fullName, role, password }) {
-    if (!can.admin(me())) throw new Error('Účty zakládá jen správce.');
+    if (!can.admin(me())) throw new Error('Účty zakládá jen administrátor.');
     const mail = email.trim().toLowerCase();
     if (!fullName.trim()) throw new Error('Vyplňte jméno a příjmení.');
     if (password.length < 6) throw new Error('Heslo musí mít alespoň 6 znaků.');
@@ -589,12 +589,12 @@ function seed() {
   const ago = (days) => new Date(now - days * 864e5 - rnd() * 6 * 36e5).toISOString();
 
   const profiles = [
-    { id: 'u-spravce', email: 'spravce@demo.cz', full_name: 'Petr Novák', role: 'admin' },
-    { id: 'u-opravar', email: 'opravar@demo.cz', full_name: 'Tomáš Horák', role: 'repairer' },
+    { id: 'u-admin', email: 'admin@demo.cz', full_name: 'Petr Novák', role: 'admin' },
+    { id: 'u-spravce', email: 'spravce@demo.cz', full_name: 'Tomáš Horák', role: 'repairer' },
     { id: 'u-uzivatel', email: 'uzivatel@demo.cz', full_name: 'Eva Svobodová', role: 'user' },
     { id: 'u-novy', email: 'novy@demo.cz', full_name: 'Karel Dvořák', role: 'pending' },
   ];
-  const reporters = ['u-spravce', 'u-opravar', 'u-uzivatel', 'u-uzivatel'];
+  const reporters = ['u-admin', 'u-spravce', 'u-uzivatel', 'u-uzivatel'];
 
   // Typové kódy (prvních 7 číslic) podle skupiny – jen pro realistický vzhled.
   const prefixes = { 1: '3354695', 2: '3154398', 3: '3354490', 4: '3381665', 5: '3354786', 6: '3154397', 7: '3354245' };
@@ -608,7 +608,7 @@ function seed() {
       const first11 = prefixes[g.id] + (rnd() < 0.5 ? pick(serials) : String(Math.floor(rnd() * 1e4)).padStart(4, '0'));
       const number = first11 + checkDigit(first11 + '0');
       if (wagons.some((w) => w.number === number)) continue;
-      wagons.push({ id: uid(), number, group_id: g.id, note: null, created_by: 'u-spravce', created_at: ago(60) });
+      wagons.push({ id: uid(), number, group_id: g.id, note: null, created_by: 'u-admin', created_at: ago(60) });
     }
   }
 
@@ -651,7 +651,7 @@ function seed() {
         found_at: rnd() < 0.25 ? new Date(Date.parse(created) - (2 + rnd() * 20) * 36e5).toISOString() : created,
         created_by: pick(reporters), created_at: created, updated_at: null,
         resolved_at: resolved ? new Date(Date.parse(created) + (1 + rnd() * 5) * 864e5).toISOString() : null,
-        resolved_by: resolved ? 'u-opravar' : null,
+        resolved_by: resolved ? 'u-spravce' : null,
         resolution_note: resolved && rnd() < 0.6 ? 'Vyměněno, zkouška brzdy OK.' : null,
       };
       if (d.resolved_at && d.resolved_at > new Date(now).toISOString()) d.resolved_at = new Date(now - 36e5).toISOString();

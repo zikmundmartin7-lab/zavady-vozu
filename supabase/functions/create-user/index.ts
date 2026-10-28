@@ -1,4 +1,4 @@
-// Supabase Edge Function: správce založí účet za kolegu s dočasným heslem.
+// Supabase Edge Function: administrátor založí účet za kolegu s dočasným heslem.
 //   { email, full_name, role, password } → { id }
 // Účet je rovnou potvrzený (žádný e-mail) a schválený (zvolená role). Heslo si uživatel může,
 // ale nemusí změnit (Můj účet → Změnit heslo); do té doby má v user_metadata temp_password: true.
@@ -32,7 +32,7 @@ Deno.serve(async (req) => {
   const { data: { user } } = await asUser.auth.getUser();
   if (!user) return json({ error: 'Nepřihlášený uživatel.' }, 401);
   const { data: me } = await asUser.from('profiles').select('role').eq('id', user.id).maybeSingle();
-  if (me?.role !== 'admin') return json({ error: 'Účty zakládá jen správce.' }, 403);
+  if (me?.role !== 'admin') return json({ error: 'Účty zakládá jen administrátor.' }, 403);
 
   const body = await req.json().catch(() => ({}));
   const email = String(body.email ?? '').trim().toLowerCase();
@@ -60,7 +60,7 @@ Deno.serve(async (req) => {
   }
 
   // Profil založil trigger handle_new_user (role „čeká na schválení“). Roli nastavíme přihlášením
-  // správce – trigger protect_profile pustí změnu role jen jemu, servisnímu klíči ne.
+  // administrátor – trigger protect_profile pustí změnu role jen jemu, servisnímu klíči ne.
   const { data: updated, error: roleError } = await asUser.from('profiles')
     .update({ role }).eq('id', data.user.id).select('id');
   if (roleError || !updated?.length) {

@@ -1,5 +1,5 @@
 // Záložka „Předpisy“: PDF předpisů v soukromém úložišti. Číst je mohou schválení uživatelé,
-// nahrávat a mazat jen správce.
+// nahrávat a mazat jen administrátor.
 
 import { html, useState } from '../../vendor/preact-htm.js';
 import { can, formatDateTime } from '../model.js';
@@ -80,7 +80,7 @@ export function RegulationsView() {
       ${regs.data?.length === 0 && html`
         <${Empty}>${api.mode === 'demo'
           ? 'V ukázkovém režimu nejsou předpisy k dispozici.'
-          : `Zatím tu nejsou žádné předpisy.${can.admin(me) ? ' Nahrajte je níže.' : ' Nahraje je správce.'}`}<//>`}
+          : `Zatím tu nejsou žádné předpisy.${can.admin(me) ? ' Nahrajte je níže.' : ' Nahraje je administrátor.'}`}<//>`}
       ${regs.data?.length > 0 && html`
         <ul class="list">
           ${regs.data.map((r) => html`

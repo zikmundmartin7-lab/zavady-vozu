@@ -4,7 +4,7 @@ Výstup (do složky private/, která se NEnahrává na GitHub – text katalogu 
   private/katalog_vsp9.json   – kontrolní výpis
   private/katalog_vsp9.sql    – vložení do tabulky defect_codes v Supabase (spustit v SQL Editoru)
   private/katalog_obrazky/    – obrázky z katalogu, název = kód_pořadí.png (např. 1.3.3_1.png);
-                                nahrávají se v aplikaci (Kódy závad → Obrázky katalogu, jen správce)
+                                nahrávají se v aplikaci (Kódy závad → Obrázky katalogu, jen administrátor)
 
 Spuštění:  python3 tools/katalog_vsp9.py "cesta/k/VSP Příloha 9.pdf"
 Potřebuje: pip install --user pdfplumber

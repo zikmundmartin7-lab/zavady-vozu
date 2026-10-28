@@ -1,4 +1,4 @@
-// Obrazovky pro správce: koš (obnovení smazaného), historie všech změn, pravidelné exporty na e-mail.
+// Obrazovky pro administrátora: koš (obnovení smazaného), historie všech změn, pravidelné exporty na e-mail.
 
 import { html, useState } from '../../vendor/preact-htm.js';
 import { actorName, describe, groupTrash } from '../history.js';
@@ -6,7 +6,7 @@ import { can, formatDateTime, groupLabel } from '../model.js';
 import { Empty, ErrorBox, Icon, Loading, TopBar, useApp, useLoad } from '../ui.js';
 
 const AdminOnly = ({ title }) => html`
-  <${TopBar} back="#/ucet" title=${title} /><main class="page"><${Empty}>Jen pro správce.<//></main>`;
+  <${TopBar} back="#/ucet" title=${title} /><main class="page"><${Empty}>Jen pro administrátora.<//></main>`;
 
 // ───── Koš ─────
 
