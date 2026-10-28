@@ -3,7 +3,7 @@
 import { html, useState } from '../../vendor/preact-htm.js';
 import { plural } from '../model.js';
 import {
-  Badge, BottomNav, CommentsFab, Empty, ErrorBox, Fab, GroupName, Icon, InstallOffer, Loading, NewBadge, OpenCount, OutboxBanner, PushOffer, TopBar,
+  Badge, BottomNav, CameraOffer, CommentsFab, Empty, ErrorBox, Fab, GroupName, Icon, InstallOffer, Loading, NewBadge, OpenCount, OutboxBanner, PushOffer, TopBar,
   UserButton, WagonNumber, WagonSearch, useApp, useLoad,
 } from '../ui.js';
 
@@ -18,6 +18,7 @@ export function HomeView() {
       <${OutboxBanner} />
       <${InstallOffer} />
       <${PushOffer} />
+      <${CameraOffer} />
       <${WagonSearch} onQuery=${setQ} />
       ${!q && html`
         <${ErrorBox} error=${groups.error} />

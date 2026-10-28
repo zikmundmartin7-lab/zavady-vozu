@@ -852,6 +852,115 @@ export function PushOffer() {
     </section>`;
 }
 
+// ───── Fotoaparát: povolení předem (jen Android) ─────
+// Vyfotit/Natočit otevírají fotoaparát telefonu a ten potřebuje povolení pro prohlížeč. Když je zakázané
+// (často v nastavení Androidu pro celý Chrome), klepnutí tiše nic neudělá – Galerie přitom funguje.
+// Proto si aplikace o fotoaparát řekne předem (karta na úvodní obrazovce) a zákaz ukáže i ve formuláři.
+
+const CAMERA_DENIED = 'zavady-camera-denied'; // zkouška fotoaparátu skončila zákazem (prohlížeč to nemusí hlásit)
+const CAMERA_OK = 'zavady-camera-ok'; // zkouška prošla (pro prohlížeče, které stav povolení neprozradí)
+const CAMERA_OFFER_HIDDEN = 'zavady-camera-offer-hidden';
+
+const isSamsungBrowser = () => /SamsungBrowser/.test(navigator.userAgent);
+const browserName = () => (isSamsungBrowser() ? 'Samsung Internet' : 'Chrome');
+
+/** Stav fotoaparátu: 'granted' | 'prompt' | 'denied', nebo null (nejde o Android nebo to nejde zjistit). */
+export async function cameraPermission() {
+  if (!isAndroid() || !navigator.mediaDevices?.getUserMedia) return null;
+  let state = null;
+  try { state = (await navigator.permissions.query({ name: 'camera' })).state; } catch { /* prohlížeč neumí */ }
+  if (state === 'denied' || flag(CAMERA_DENIED)) return 'denied';
+  if (state === 'granted' || flag(CAMERA_OK)) return 'granted';
+  return 'prompt';
+}
+
+/** Krátce zapne fotoaparát (telefon se zeptá na povolení) a hned ho vypne. Vrací 'granted' | 'denied' | 'error'. */
+export async function requestCamera() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    stream.getTracks().forEach((t) => t.stop());
+  } catch (e) {
+    if (e.name === 'NotAllowedError' || e.name === 'SecurityError') {
+      setFlag(CAMERA_DENIED, true);
+      setFlag(CAMERA_OK, false);
+      return 'denied';
+    }
+    // NotReadableError = fotoaparát právě používá jiná aplikace, povolení je ale v pořádku
+    if (e.name !== 'NotReadableError' && e.name !== 'AbortError') return 'error';
+  }
+  setFlag(CAMERA_DENIED, false);
+  setFlag(CAMERA_OK, true);
+  return 'granted';
+}
+
+/** Hlídá stav fotoaparátu, po návratu z nastavení telefonu ho zjistí znovu. */
+export function useCameraPermission() {
+  const [state, setState] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    const check = () => cameraPermission().then((s) => alive && setState(s), () => {});
+    check();
+    const onVisible = () => document.visibilityState === 'visible' && check();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { alive = false; document.removeEventListener('visibilitychange', onVisible); };
+  }, []);
+  return [state, setState];
+}
+
+/** Postup, jak fotoaparát povolit (Android, podle prohlížeče). */
+export function CameraSteps() {
+  const b = browserName();
+  return html`
+    <ol class="camera-steps">
+      <li><b>Nastavení telefonu → Aplikace → ${b} → Oprávnění → Fotoaparát → Povolit</b>.</li>
+      ${isSamsungBrowser()
+        ? html`<li>Když to nepomůže: v Samsung Internet <b>≡ → Nastavení → Stránky a stahování → Oprávnění webu</b> a povolit fotoaparát.</li>`
+        : html`<li>Když to nepomůže: v Chromu <b>⋮ → Nastavení → Nastavení webu → Fotoaparát</b> a povolit tuto stránku.</li>`}
+      <li>Na Samsungu ještě zkontrolujte, že v horní liště není vypnutý <b>Přístup k fotoaparátu</b>.</li>
+    </ol>`;
+}
+
+/** Karta na úvodní obrazovce: povolit fotoaparát předem, ať Vyfotit a Natočit u vozu fungují napoprvé. */
+export function CameraOffer() {
+  const { toast } = useApp();
+  const [state, setState] = useCameraPermission();
+  const [hidden, setHidden] = useState(() => flag(CAMERA_OFFER_HIDDEN));
+  const [busy, setBusy] = useState(false);
+
+  if (hidden || (state !== 'prompt' && state !== 'denied')) return null;
+  const hide = () => { setFlag(CAMERA_OFFER_HIDDEN, true); setHidden(true); };
+  async function allow() {
+    setBusy(true);
+    try {
+      const r = await requestCamera();
+      setState(r === 'granted' ? 'granted' : r === 'denied' ? 'denied' : null);
+      if (r === 'granted') toast('Fotoaparát povolen – Vyfotit a Natočit budou fungovat.');
+      else if (r === 'error') toast('Fotoaparát se nepodařilo spustit. Fotky půjde přidat z galerie.', { kind: 'error' });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return html`
+    <section class="card camera-offer">
+      <h2><${Icon} name="camera" /> Fotoaparát pro fotky závad</h2>
+      ${state === 'prompt' && html`
+        <p>Povolte aplikaci fotoaparát už teď, ať u vozu tlačítka <b>Vyfotit</b> a <b>Natočit</b> fungují napoprvé.</p>
+        <div class="row">
+          <button class="btn btn-primary" disabled=${busy} onClick=${allow}>${busy ? 'Ověřuji…' : 'Povolit'}</button>
+          <button class="btn" onClick=${hide}>Teď ne</button>
+        </div>
+        <p class="hint">Telefon se zeptá – klepněte na <b>Povolit</b> (případně <b>Při používání aplikace</b>).</p>`}
+      ${state === 'denied' && html`
+        <p>Fotoaparát je pro aplikaci zakázaný, takže nepůjde <b>Vyfotit</b> ani <b>Natočit</b> (z galerie ano). Povolíte ho takto:</p>
+        <${CameraSteps} />
+        <div class="row">
+          <button class="btn btn-primary" disabled=${busy} onClick=${allow}>${busy ? 'Ověřuji…' : 'Zkontrolovat znovu'}</button>
+          <button class="btn" onClick=${hide}>Rozumím</button>
+        </div>`}
+    </section>`;
+}
+
 // ───── Aplikace na plochu: karta na přihlášení, při čekání na schválení a na úvodní obrazovce ─────
 
 // Android; tablet (a telefon s „Verzí pro počítač“) se hlásí jako počítač s Linuxem – pozná se podle
