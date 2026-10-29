@@ -4,6 +4,7 @@ import { html, useEffect, useState } from '../../vendor/preact-htm.js';
 import { DEFAULT_PASSWORD, ROLES, can, plural } from '../model.js';
 import { APP_VERSION } from '../version.js';
 import { ocrReady, prefetchOcr } from '../offline.js';
+import { browserVersion, installCzech, offlineDictation } from '../dictation.js';
 import {
   Empty, ErrorBox, Icon, InstallOffer, Loading, PasswordInput, TopBar, enablePush, isIos, isStandalone, setPushOff,
   swVersion, updateApp, useApp, useLoad,
@@ -372,6 +373,50 @@ function OcrStatus() {
   }[state]}</p>`;
 }
 
+// Diktování popisu bez signálu: umí telefon češtinu přímo v sobě? Chybí-li, jde ji tu stáhnout (Chrome 139+).
+function DictationStatus() {
+  const { toast } = useApp();
+  const [state, setState] = useState(null);
+  const b = browserVersion();
+  const check = () => offlineDictation().then(setState, () => setState('unsupported'));
+  useEffect(() => { check(); }, []);
+  // během stahování se stav občas ověří, ať je vidět, až je hotovo
+  useEffect(() => {
+    if (state !== 'downloading') return undefined;
+    const t = setInterval(check, 3000);
+    return () => clearInterval(t);
+  }, [state]);
+
+  async function download() {
+    if (!navigator.onLine) { toast('Češtinu jde stáhnout jen se signálem.', { kind: 'error' }); return; }
+    setState('downloading');
+    try {
+      if (!(await installCzech())) throw new Error('telefon stažení odmítl');
+    } catch (e) {
+      toast(`Češtinu se nepodařilo stáhnout (${e.message}). Zkuste to znovu na Wi-Fi.`, { kind: 'error' });
+    }
+    check();
+  }
+
+  if (!state) return null;
+  const ver = b.version ? ` (${b.name} ${b.version})` : '';
+  return html`<div class="dictation-status">
+    <p class="muted small">${{
+      ready: `Diktování bez signálu: připravené, čeština je v telefonu${ver}.`,
+      downloadable: `Diktování bez signálu: čeština ještě není v telefonu${ver}.`,
+      downloading: 'Stahuji češtinu pro diktování bez signálu…',
+      unsupported: isIos()
+        ? 'Diktování v aplikaci potřebuje na iPhonu signál. Bez signálu použijte mikrofon na klávesnici.'
+        : b.name === 'Chrome' && b.version < 139
+          ? `Diktování bez signálu potřebuje novější Chrome (teď ${b.version}) – aktualizujte ho v Obchodě Play.`
+          : `Diktování bez signálu tento telefon pro češtinu neumí${ver} – v aplikaci diktujte se signálem, jinak mikrofonem na klávesnici.`,
+      none: `Diktování v aplikaci tento prohlížeč neumí${ver} – použijte mikrofon na klávesnici.`,
+    }[state]}</p>
+    ${state === 'downloadable' && html`<button type="button" class="btn" onClick=${download}>
+      <${Icon} name="mic" size=${18} /> Stáhnout češtinu pro diktování</button>`}
+  </div>`;
+}
+
 function AppVersion() {
   const { toast } = useApp();
   const [downloaded, setDownloaded] = useState(0);
@@ -392,6 +437,7 @@ function AppVersion() {
     <div class="app-version">
       <p class="muted small">Verze aplikace ${APP_VERSION}${downloaded > APP_VERSION ? ` · stažená je novější verze ${downloaded}` : ''}</p>
       <${OcrStatus} />
+      <${DictationStatus} />
       <button type="button" class="btn" disabled=${busy} onClick=${update}>
         <${Icon} name="download" size=${18} /> ${busy ? 'Hledám novou verzi…' : 'Aktualizovat'}</button>
     </div>`;

@@ -12,6 +12,7 @@ import {
 } from '../ui.js';
 import { CodePicker } from './codes.js';
 import { draft, takeSharedFiles } from '../draft.js';
+import { DictateButton, joinDictated } from '../dictation.js';
 import { outbox } from '../outbox.js';
 
 function FilePicker({ onFiles }) {
@@ -297,6 +298,7 @@ export function DefectFormView({ editId, params }) {
           <h2 class="field-label">Popis závady</h2>
           <textarea rows="4" placeholder="Co je špatně, kde přesně na voze…" value=${description}
             onInput=${(e) => setDescription(e.currentTarget.value)}></textarea>
+          <${DictateButton} onText=${(t) => setDescription((prev) => joinDictated(prev, t))} />
         </section>
 
         <section class="card">

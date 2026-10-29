@@ -303,6 +303,11 @@ a.card.list-row { padding: 16px; }
 }
 .date-input:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
 .number-input { font-size: 1.5rem; letter-spacing: .04em; font-variant-numeric: tabular-nums; margin-bottom: 0; }
+/* diktování popisu závady (js/dictation.js) */
+.dictate { display: flex; align-items: center; gap: .6rem; }
+.dictate .btn.listening { background: var(--red); border-color: var(--red); color: #fff; }
+.dictate .btn.listening .icon { animation: blink 1s infinite; }
+.dictate-live { flex: 1; min-width: 0; color: var(--muted); font-size: .9rem; font-style: italic; }
 .number-row { display: flex; gap: 8px; align-items: stretch; }
 /* celé číslo se vedle tlačítka kamery musí vejít i na úzký telefon (360 px) */
 .number-row .number-input { flex: 1; min-width: 0; padding: .6rem; letter-spacing: .02em; font-size: min(1.5rem, 6.2vw); }
@@ -634,6 +639,7 @@ fieldset.field .check-row { margin: .45rem 0; color: var(--text); font-weight: 5
 .link-note .small { margin-top: .35rem; color: var(--muted); }
 .app-version { text-align: center; margin-top: 1rem; }
 .app-version p { margin-bottom: .4rem; }
+.dictation-status { margin-bottom: .8rem; }
 
 /* ───── Obnovení stažením dolů ───── */
 
