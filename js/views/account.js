@@ -6,7 +6,7 @@ import { APP_VERSION } from '../version.js';
 import { ocrReady, prefetchOcr } from '../offline.js';
 import { browserVersion, installCzech, offlineDictation } from '../dictation.js';
 import {
-  Empty, ErrorBox, Icon, InstallOffer, Loading, PasswordInput, TopBar, enablePush, isIos, isStandalone, setPushOff,
+  Empty, ErrorBox, Icon, InstallOffer, Loading, PasswordInput, TopBar, enablePush, isAndroid, isIos, isStandalone, setPushOff,
   swVersion, updateApp, useApp, useLoad,
 } from '../ui.js';
 
@@ -374,6 +374,8 @@ function OcrStatus() {
 }
 
 // Diktování popisu bez signálu: umí telefon češtinu přímo v sobě? Chybí-li, jde ji tu stáhnout (Chrome 139+).
+// Chrome v Androidu to zatím neumí v žádné verzi (jen Chrome na počítači, 2026) – tam se neradí aktualizace,
+// ale mikrofon na klávesnici. Kdyby to Android dostal, ukáže se tu samo tlačítko Stáhnout.
 function DictationStatus() {
   const { toast } = useApp();
   const [state, setState] = useState(null);
@@ -407,7 +409,10 @@ function DictationStatus() {
       downloading: 'Stahuji češtinu pro diktování bez signálu…',
       unsupported: isIos()
         ? 'Diktování v aplikaci potřebuje na iPhonu signál. Bez signálu použijte mikrofon na klávesnici.'
-        : b.name === 'Chrome' && b.version < 139
+        : isAndroid()
+          ? `Diktování bez signálu Android zatím neumí${ver} – tlačítko Diktovat potřebuje signál. Bez signálu použijte `
+            + 'mikrofon na klávesnici (v Gboardu si stáhněte češtinu: Hlasové zadávání → Offline rozpoznávání řeči).'
+          : b.name === 'Chrome' && b.version < 139
           ? `Diktování bez signálu potřebuje novější Chrome (teď ${b.version}) – aktualizujte ho v Obchodě Play.`
           : `Diktování bez signálu tento telefon pro češtinu neumí${ver} – v aplikaci diktujte se signálem, jinak mikrofonem na klávesnici.`,
       none: `Diktování v aplikaci tento prohlížeč neumí${ver} – použijte mikrofon na klávesnici.`,
