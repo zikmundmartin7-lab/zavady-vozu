@@ -262,6 +262,10 @@ export const api = {
     const w = state.wagons.find((x) => x.number === number);
     return w ? wagonOverview(w) : null;
   },
+  async listSeriesWagons(code) {
+    requireMember();
+    return state.wagons.filter((w) => w.number.slice(4, 8) === code).map(({ number, group_id }) => ({ number, group_id }));
+  },
   async createWagon(number, groupId) {
     const m = requireMember();
     if (state.wagons.some((w) => w.number === number)) throw new Error('Vůz s tímto číslem už existuje.');

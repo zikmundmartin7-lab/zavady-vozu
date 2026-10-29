@@ -1,10 +1,10 @@
 // Formulář nové závady / úpravy závady (číslo vozu, kód závady, popis, datum zjištění, fotky a videa).
 
-import { html, useEffect, useMemo, useState } from '../../vendor/preact-htm.js';
+import { html, useEffect, useMemo, useRef, useState } from '../../vendor/preact-htm.js';
 import { CODE_RE } from '../codes.js';
 import {
   MAX_VIDEO_MB, can, checkDigit, checkFoundAt, digitsOnly, foundAtOf, formatDateTime, formatNumber, isCompleteNumber,
-  isValidCheckDigit, toLocalInput,
+  groupLabel, isValidCheckDigit, plural, toLocalInput,
 } from '../model.js';
 import {
   CameraSteps, Empty, ErrorBox, GroupName, Icon, Loading, TopBar, WagonNumber, goBack, praise,
@@ -14,6 +14,7 @@ import { CodePicker } from './codes.js';
 import { draft, takeSharedFiles } from '../draft.js';
 import { DictateButton, joinDictated } from '../dictation.js';
 import { outbox } from '../outbox.js';
+import { suggestGroup } from '../series.js';
 
 function FilePicker({ onFiles }) {
   const pick = (e) => {
@@ -63,6 +64,17 @@ function Preview({ kind, url, onRemove }) {
     </div>`;
 }
 
+// Proč je skupina předvybraná (nebo jaká by podle čísla byla), ať ji vozmistr zkontroluje.
+function GroupHint({ s, groupId, groups }) {
+  const g = s && groups?.find((x) => x.id === s.groupId);
+  if (!g) return s?.series ? html`<div class="hint">Řada podle čísla: <b>${s.series}</b>.</div>` : null;
+  const why = html`${s.series ? html`řada <b>${s.series}</b>, ` : ''}${s.count
+    ? `stejná řada je v evidenci u ${plural(s.count, 'vozu', 'vozů', 'vozů')} této skupiny` : 'podle písmen řady'}`;
+  return groupId === s.groupId
+    ? html`<div class="hint">Skupina předvybrána podle čísla (${why}) – zkontrolujte.</div>`
+    : html`<div class="hint">Podle čísla (${why}) by to byla skupina <b>${groupLabel(g)}</b>.</div>`;
+}
+
 export function DefectFormView({ editId, params }) {
   const { api, me, toast } = useApp();
   const presetWagonId = params.get('vuz');
@@ -74,6 +86,8 @@ export function DefectFormView({ editId, params }) {
   const [number, setNumber] = useState(digitsOnly(params.get('cislo') ?? ''));
   const [found, setFound] = useState(undefined); // undefined = nehledáno, null = nový vůz, 'offline' = nelze ověřit
   const [groupId, setGroupId] = useState(Number(params.get('skupina')) || null);
+  const [suggested, setSuggested] = useState(null); // skupina nového vozu podle čísla (js/series.js)
+  const autoGroup = useRef(null);                    // skupina předvybraná podle čísla, dokud ji vozmistr nezmění
   const [code, setCode] = useState('');
   const [description, setDescription] = useState('');
   const [foundAt, setFoundAt] = useState(() => toLocalInput(new Date()));
@@ -160,6 +174,24 @@ export function DefectFormView({ editId, params }) {
     );
     return () => { alive = false; };
   }, [number, fixedWagonId]);
+
+  // Nový vůz: skupinu předvybrat podle řady (stejné řady v evidenci, jinak písmena řady). Co vybral vozmistr
+  // (nebo přišlo z rozepsané závady či ze skupiny, odkud formulář otevřel), se nepřepíše.
+  useEffect(() => {
+    setSuggested(null);
+    if (!groups.data || !(found === null || found === 'offline')) return;
+    let alive = true;
+    suggestGroup(api, number, groups.data).then((s) => {
+      if (!alive || !s) return;
+      setSuggested(s);
+      setGroupId((g) => {
+        if (g !== null && g !== autoGroup.current) return g;
+        autoGroup.current = s.groupId;
+        return s.groupId;
+      });
+    }, () => {});
+    return () => { alive = false; };
+  }, [number, found, groups.data]);
 
   const previews = useMemo(() => files.map((f) => ({
     file: f, url: URL.createObjectURL(f), kind: f.type.startsWith('video/') ? 'video' : 'image',
@@ -285,8 +317,10 @@ export function DefectFormView({ editId, params }) {
                 ${found === null && html`<div class="hint">Nový vůz – vyberte skupinu:</div>`}
                 <div class="chips-select">
                   ${groups.data?.map((g) => html`
-                    <button type="button" class="chip-btn ${groupId === g.id ? 'active' : ''}" onClick=${() => setGroupId(g.id)}><${GroupName} g=${g} /></button>`)}
-                </div>`}`}
+                    <button type="button" class="chip-btn ${groupId === g.id ? 'active' : ''}"
+                      onClick=${() => { autoGroup.current = null; setGroupId(g.id); }}><${GroupName} g=${g} /></button>`)}
+                </div>
+                <${GroupHint} s=${suggested} groupId=${groupId} groups=${groups.data} />`}`}
         </section>
 
         <section class="card">

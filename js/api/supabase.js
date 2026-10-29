@@ -223,6 +223,10 @@ export const api = {
   async findWagon(number) {
     return check(await sb.from('wagon_overview').select('*').eq('number', number).maybeSingle());
   },
+  // Vozy stejné řady (5.–8. číslice čísla) – podle nich se novému vozu předvybere skupina (js/series.js)
+  async listSeriesWagons(code) {
+    return check(await sb.from('wagons').select('number, group_id').like('number', `____${code}____`).limit(1000));
+  },
   async createWagon(number, groupId) {
     const w = check(await sb.from('wagons')
       .insert({ number, group_id: groupId, created_by: await currentUserId() }).select('id').single());
