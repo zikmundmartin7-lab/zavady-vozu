@@ -1,7 +1,7 @@
 // Sdílené komponenty a pomocné funkce pro obrazovky.
 
 import { html, createContext, useContext, useEffect, useRef, useState } from '../vendor/preact-htm.js';
-import { can, compressImage, digitsOnly, foundAtOf, formatDateTime, formatNumber, plural, splitNumber } from './model.js';
+import { can, digitsOnly, foundAtOf, formatDateTime, formatNumber, plural, splitNumber } from './model.js';
 import { matchRanges } from './codes.js';
 import { outbox, syncOutbox } from './outbox.js';
 
@@ -558,22 +558,6 @@ function shareFile(blob, w, i) {
   return new File([blob], `zavada-${w.number.slice(-4)}-${i + 1}.${ext}`, { type });
 }
 
-/**
- * Fotky z formuláře (sdílení hned po uložení) jako zmenšené kopie v paměti. Soubory přímo z fotoaparátu
- * nebo galerie Chrome v Androidu do sdílení nepředal – nabídka sdílení se vůbec neotevřela (28. 10.).
- * Kopie v paměti se sdílí stejně jako fotky stažené z aplikace (tlačítko WhatsApp u závady), které fungují.
- */
-export async function sharePhotoCopies(files, w) {
-  const out = [];
-  for (const f of files.filter((x) => x.type.startsWith('image/'))) {
-    try {
-      const small = await compressImage(f);
-      out.push(shareFile(new Blob([await small.arrayBuffer()], { type: small.type }), w, out.length));
-    } catch { /* fotku se nepodařilo připravit – sdílí se bez ní */ }
-  }
-  return out;
-}
-
 const shareable = (files) => (files?.length && navigator.canShare?.({ files }) ? files : []);
 
 /**
@@ -684,7 +668,7 @@ export async function quickShare({ d, w, openDialog, onShared }) {
  * Okno pro sdílení: náhled zprávy a jedno velké tlačítko, na Androidu s víc fotkami dvě (fotky, pak text).
  * prepared = { d, w, files | ready (prepareShare), error } (bez sítě).
  */
-export function ShareDialog({ id, afterSave = false, prepared = {}, onClose }) {
+export function ShareDialog({ id, prepared = {}, onClose }) {
   const { api, toast } = useApp();
   const [data, setData] = useState(prepared.d && prepared.w ? { d: prepared.d, w: prepared.w } : null);
   const [files, setFiles] = useState(prepared.files ?? null); // null = připravuji fotky
@@ -751,7 +735,7 @@ export function ShareDialog({ id, afterSave = false, prepared = {}, onClose }) {
     <div class="dialog-backdrop" onClick=${(e) => e.target === e.currentTarget && onClose()}>
       <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="share-title">
         <div class="dialog-head">
-          <h2 id="share-title">${afterSave ? 'Závada uložena – poslat do WhatsAppu?' : 'Poslat do WhatsAppu'}</h2>
+          <h2 id="share-title">Poslat do WhatsAppu</h2>
           <button class="icon-btn" onClick=${onClose} aria-label="Zavřít"><${Icon} name="x" /></button>
         </div>
         <${ErrorBox} error=${error} />
@@ -779,8 +763,7 @@ export function ShareDialog({ id, afterSave = false, prepared = {}, onClose }) {
             ${canNative && !two && html`<a class="btn block" href=${waLink} target="_blank" rel="noopener"
               onClick=${() => praise(toast)}>WhatsApp jen s textem</a>`}
             <button class="btn block" onClick=${copy}><${Icon} name="clipboard" size=${18} /> Kopírovat text</button>
-          </details>
-          ${afterSave && html`<button class="btn btn-ghost block" onClick=${onClose}>Teď ne</button>`}`}
+          </details>`}
       </div>
     </div>`;
 }

@@ -7,8 +7,8 @@ import {
   isValidCheckDigit, toLocalInput,
 } from '../model.js';
 import {
-  CameraSteps, Empty, ErrorBox, GroupName, Icon, Loading, TopBar, WagonNumber, goBack, praise, prepareShare,
-  requestCamera, sharePhotoCopies, useApp, useCameraPermission, useLoad,
+  CameraSteps, Empty, ErrorBox, GroupName, Icon, Loading, TopBar, WagonNumber, goBack, praise,
+  requestCamera, useApp, useCameraPermission, useLoad,
 } from '../ui.js';
 import { CodePicker } from './codes.js';
 import { draft, takeSharedFiles } from '../draft.js';
@@ -63,7 +63,7 @@ function Preview({ kind, url, onRemove }) {
 }
 
 export function DefectFormView({ editId, params }) {
-  const { api, me, toast, share } = useApp();
+  const { api, me, toast } = useApp();
   const presetWagonId = params.get('vuz');
   const existingDefect = useLoad(() => (editId ? api.getDefect(editId) : Promise.resolve(null)), [editId]);
   const fixedWagonId = editId ? existingDefect.data?.wagon_id : presetWagonId;
@@ -209,21 +209,12 @@ export function DefectFormView({ editId, params }) {
       }
       setBusy('Ukládám…');
       if (!wagon) wagon = found && found !== 'offline' ? found : (await api.findWagon(number)) ?? await api.createWagon(number, groupId);
-      const created = await api.createDefect({ wagon_id: wagon.id, description, found_at, defect_code: code }, files,
+      await api.createDefect({ wagon_id: wagon.id, description, found_at, defect_code: code }, files,
         (i, n) => setBusy(`Nahrávám přílohu ${i}/${n}…`));
       praise(toast, { title: 'Závada uložena', always: true });
       await draft.clear(draftKey);
-      await goBack(`#/vuz/${wagon.id}`); // okno sdílení až na obrazovce vozu (krok v historii, viz useBackClose)
-      // Ve zkušebním provozu běží souběžně skupina na WhatsAppu → hned nabídnout poslání (vše je v telefonu,
-      // nic se nestahuje: text ze zadaných údajů, fotky z formuláře jako zmenšené kopie)
-      if (created?.id) {
-        share(created.id, { afterSave: true, prepared: {
-          d: { ...created, created_by_name: me.full_name,
-            attachments: files.map((f) => ({ kind: f.type.startsWith('video/') ? 'video' : 'image' })) },
-          w: wagon,
-          ready: prepareShare(sharePhotoCopies(files, wagon)),
-        } });
-      }
+      // Poslání do WhatsAppu se po uložení už samo nenabízí (přání uživatele 29. 10.) – jen tlačítkem u závady
+      await goBack(`#/vuz/${wagon.id}`);
     } catch (err) {
       // Bez signálu: novou závadu uložit v telefonu a odeslat později (úpravy jen s připojením)
       if (!editId && (err.network || !navigator.onLine) && description.trim()) {

@@ -118,7 +118,7 @@ function App() {
   const [version, setVersion] = useState(0);
   const [toasts, setToasts] = useState([]);
   const [media, setMedia] = useState(null);
-  const [sharing, setSharing] = useState(null); // { id, afterSave } – okno pro sdílení závady
+  const [sharing, setSharing] = useState(null); // { id, prepared } – okno pro sdílení závady
   const [recovery, setRecovery] = useState(false);
   const [installPrompt, setInstallPrompt] = useState(null); // výzva Chromu k instalaci na plochu (jde použít jen jednou)
   const [installed, setInstalled] = useState(false);
