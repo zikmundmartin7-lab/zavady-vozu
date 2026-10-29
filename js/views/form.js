@@ -205,13 +205,13 @@ export function DefectFormView({ editId, params }) {
       await draft.clear(draftKey);
       await goBack(`#/vuz/${wagon.id}`); // okno sdílení až na obrazovce vozu (krok v historii, viz useBackClose)
       // Ve zkušebním provozu běží souběžně skupina na WhatsAppu → hned nabídnout poslání (vše je v telefonu,
-      // nic se nestahuje: text ze zadaných údajů, fotky z formuláře jako zmenšené kopie, víc fotek v jednom obrázku)
+      // nic se nestahuje: text ze zadaných údajů, fotky z formuláře jako zmenšené kopie)
       if (created?.id) {
         share(created.id, { afterSave: true, prepared: {
           d: { ...created, created_by_name: me.full_name,
             attachments: files.map((f) => ({ kind: f.type.startsWith('video/') ? 'video' : 'image' })) },
           w: wagon,
-          ready: prepareShare(sharePhotoCopies(files, wagon), wagon),
+          ready: prepareShare(sharePhotoCopies(files, wagon)),
         } });
       }
     } catch (err) {

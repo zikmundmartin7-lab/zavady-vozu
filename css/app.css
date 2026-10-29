@@ -644,9 +644,6 @@ fieldset.field .check-row { margin: .45rem 0; color: var(--text); font-weight: 5
 /* ───── Okno sdílení: jiné možnosti ───── */
 
 .share-preview { margin-top: .4rem; }
-/* Náhled obrázku s fotkami pod sebou: úzký pruh, delší se posouvá */
-.share-collage { width: 140px; max-height: 260px; overflow-y: auto; margin: .6rem auto 0; border-radius: 10px; border: 1px solid var(--border); }
-.share-collage img { display: block; width: 100%; }
 .share-more { margin-top: .6rem; }
 .share-more summary { cursor: pointer; color: var(--primary); font-weight: 600; padding: .4rem 0; }
 /* Úprava, smazání, vrácení: vpravo a při zalomení řádku pohromadě */

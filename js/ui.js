@@ -1,6 +1,6 @@
 // Sdílené komponenty a pomocné funkce pro obrazovky.
 
-import { html, createContext, useContext, useEffect, useMemo, useRef, useState } from '../vendor/preact-htm.js';
+import { html, createContext, useContext, useEffect, useRef, useState } from '../vendor/preact-htm.js';
 import { can, compressImage, digitsOnly, foundAtOf, formatDateTime, formatNumber, plural, splitNumber } from './model.js';
 import { matchRanges } from './codes.js';
 import { outbox, syncOutbox } from './outbox.js';
@@ -574,13 +574,17 @@ export async function sharePhotoCopies(files, w) {
 
 const shareable = (files) => (files?.length && navigator.canShare?.({ files }) ? files : []);
 
-// ───── Víc fotek jako jeden obrázek (jen Android) ─────
-// WhatsApp v Androidu připíše sdílený text ke každé fotce zvlášť (4 fotky = 4× celý popis závady) a webová
-// aplikace to ovlivnit neumí. Víc fotek se proto na Androidu posílá jako jeden obrázek s fotkami pod sebou (přání
-// uživatele 29. 10.): odejde vše jedním sdílením a text je u obrázku jen jednou. Na iPhonu přijdou fotky zvlášť
-// a text pod nimi – tak to fungovalo od začátku a uživatel to chce zachovat. Jednotlivé fotky v plné kvalitě
-// jsou v aplikaci. WhatsApp obrázek zmenší podle delší strany (běžná kvalita ~1600 px, HD 4096 px), takže
-// čím víc fotek, tím je každá užší.
+/**
+ * Android: WhatsApp připíše sdílený text ke každé fotce zvlášť (4 fotky = 4× celý popis závady) a webová
+ * aplikace to ovlivnit neumí. Víc fotek se proto posílá ve dvou krocích (přání uživatele 29. 10.): 1. fotky bez
+ * textu (ve WhatsAppu jako album), 2. text do stejné skupiny – přijde pod fotky jen jednou. Na iPhonu odejdou
+ * fotky i text jedním sdílením a text přijde pod fotky – tak to fungovalo od začátku.
+ */
+const twoSteps = (photoCount) => isAndroid() && photoCount > 1;
+
+// ───── Víc fotek jako jeden obrázek (Android, „Jiné možnosti“) ─────
+// Fotky pod sebou, text u obrázku jen jednou, vše jedním sdílením. WhatsApp obrázek zmenší podle delší strany
+// (běžná kvalita ~1600 px, HD 4096 px), takže čím víc fotek, tím je každá užší.
 const COLLAGE_W = 1600; // nejvíc (fotky z aplikace mají delší stranu nejvýš 1920 px)
 const COLLAGE_MAX_H = 4096; // vyšší obrázek by WhatsApp stejně zmenšil
 const COLLAGE_GAP = 8;
@@ -621,15 +625,16 @@ async function collageFile(files, w) {
   return blob ? new File([blob], `zavada-${w.number.slice(-4)}-fotky.jpg`, { type: 'image/jpeg' }) : null;
 }
 
-/**
- * Fotky pro sdílení: files = jednotlivé fotky, media = co se posílá s textem (nic, jedna fotka, nebo víc
- * fotek v jednom obrázku – jen Android). Když se obrázek nepovede, pošle se s textem aspoň první fotka.
- */
-export async function prepareShare(filesOrPromise, w) {
-  const files = shareable(await filesOrPromise);
-  if (files.length < 2 || !isAndroid()) return { files, media: files };
+// Fotky pro sdílení (jen ty, které telefon sdílet umí)
+export async function prepareShare(filesOrPromise) {
+  return shareable(await filesOrPromise);
+}
+
+// Obrázek s fotkami pod sebou se skládá až po klepnutí (sdílení musí začít do pár sekund – to stihne)
+async function collageShare(text, files, w) {
   const one = await collageFile(files, w).catch(() => null);
-  return { files, media: one ? shareable([one]) : files.slice(0, 1) };
+  if (!one) throw new Error('obrázek z fotek se nepodařilo připravit.');
+  await nativeShare(text, shareable([one]));
 }
 
 async function nativeShare(text, files) {
@@ -652,33 +657,37 @@ async function nativeShare(text, files) {
 }
 
 /**
- * Sdílení na jedno klepnutí: rovnou otevře nabídku sdílení telefonu (text + fotky v jednom obrázku).
- * Když to nejde (počítač, fotky se stahují dlouho, telefon sdílení odmítne), otevře okno s jedním tlačítkem.
+ * Sdílení na jedno klepnutí: rovnou otevře nabídku sdílení telefonu (text + fotky). Na Androidu s víc fotkami
+ * otevře okno se dvěma kroky (twoSteps). Když to nejde (počítač, fotky se stahují dlouho, telefon sdílení
+ * odmítne), otevře okno s jedním tlačítkem.
  */
 export async function quickShare({ d, w, openDialog, onShared }) {
   if (!w || typeof navigator.share !== 'function') { openDialog({}); return; }
-  const text = defectShareText(d, w);
-  const ready = prepareShare(photoFiles(d, w), w);
-  const set = await Promise.race([ready, new Promise((res) => setTimeout(() => res(null), 2500))]);
-  if (set === null) { openDialog({ d, w, ready }); return; }
+  const ready = prepareShare(photoFiles(d, w));
+  if (twoSteps((d.attachments ?? []).filter((a) => a.kind !== 'video' && a.url).length)) {
+    openDialog({ d, w, ready });
+    return;
+  }
+  const files = await Promise.race([ready, new Promise((res) => setTimeout(() => res(null), 2500))]);
+  if (files === null) { openDialog({ d, w, ready }); return; }
   try {
-    await nativeShare(text, set.media);
+    await nativeShare(defectShareText(d, w), files);
     onShared?.();
   } catch (e) {
-    if (e.name !== 'AbortError') openDialog({ d, w, ...set, error: new Error(`Sdílení se nepovedlo: ${e.message}`) });
+    if (e.name !== 'AbortError') openDialog({ d, w, files, error: new Error(`Sdílení se nepovedlo: ${e.message}`) });
   }
 }
 
 /**
- * Okno pro sdílení: náhled zprávy a obrázku a jedno velké tlačítko.
- * prepared = { d, w, files + media | ready (prepareShare), error } (bez sítě).
+ * Okno pro sdílení: náhled zprávy a jedno velké tlačítko, na Androidu s víc fotkami dvě (fotky, pak text).
+ * prepared = { d, w, files | ready (prepareShare), error } (bez sítě).
  */
 export function ShareDialog({ id, afterSave = false, prepared = {}, onClose }) {
   const { api, toast } = useApp();
   const [data, setData] = useState(prepared.d && prepared.w ? { d: prepared.d, w: prepared.w } : null);
-  // { files, media } – null = připravuji fotky
-  const [set, setSet] = useState(prepared.files ? { files: prepared.files, media: prepared.media } : null);
+  const [files, setFiles] = useState(prepared.files ?? null); // null = připravuji fotky
   const [error, setError] = useState(prepared.error ?? null);
+  const [photosSent, setPhotosSent] = useState(false);
   useBackClose(onClose);
 
   useEffect(() => {
@@ -692,8 +701,8 @@ export function ShareDialog({ id, afterSave = false, prepared = {}, onClose }) {
         if (alive) setData({ d, w });
       }
       if (!prepared.files) {
-        const s = await (prepared.ready ?? prepareShare(photoFiles(d, w), w));
-        if (alive) setSet(s);
+        const f = await (prepared.ready ?? prepareShare(photoFiles(d, w)));
+        if (alive) setFiles(f);
       }
     })().catch((e) => alive && setError(e));
     const onKey = (e) => e.key === 'Escape' && onClose();
@@ -701,27 +710,29 @@ export function ShareDialog({ id, afterSave = false, prepared = {}, onClose }) {
     return () => { alive = false; removeEventListener('keydown', onKey); };
   }, [id]);
 
-  // Náhled obrázku, který odejde (víc fotek v jednom)
-  const count = set?.files.length ?? 0;
-  const collage = count > 1 && set.media[0] && set.media[0] !== set.files[0];
-  const collageUrl = useMemo(() => (collage ? URL.createObjectURL(set.media[0]) : null), [set]);
-  useEffect(() => () => collageUrl && URL.revokeObjectURL(collageUrl), [collageUrl]);
-
+  const count = files?.length ?? 0;
+  const two = twoSteps(count);
   const text = data ? defectShareText(data.d, data.w) : '';
   const canNative = typeof navigator.share === 'function';
-  const preparing = canNative && set === null && !error;
+  const preparing = canNative && files === null && !error;
   const waLink = `https://wa.me/?text=${encodeURIComponent(text)}`;
 
-  async function send(withText = true) {
+  // done = false: okno zůstane otevřené (po fotkách se ještě posílá text)
+  async function send(share, done = true) {
     setError(null);
     try {
-      await nativeShare(withText ? text : '', withText ? set?.media ?? [] : set.files);
+      await share();
+      if (!done) return;
       praise(toast);
       onClose();
     } catch (e) {
       if (e.name !== 'AbortError') setError(new Error(`Sdílení se nepovedlo: ${e.message}`));
     }
   }
+  const sendPhotos = () => send(async () => {
+    await nativeShare('', files);
+    setPhotosSent(true);
+  }, false);
   async function copy() {
     try {
       await navigator.clipboard.writeText(text);
@@ -742,22 +753,26 @@ export function ShareDialog({ id, afterSave = false, prepared = {}, onClose }) {
         <${ErrorBox} error=${error} />
         ${!data && !error && html`<${Loading} />`}
         ${data && html`
-          ${canNative
-            ? html`<button class="btn btn-whatsapp block big-btn" disabled=${preparing} onClick=${() => send()}>
-                ${preparing ? 'Připravuji fotky…' : `Poslat do WhatsAppu${what}`}</button>
-              <p class="muted small">V nabídce klepněte na WhatsApp a vyberte skupinu.${collage
-                ? ' Fotky přijdou pod sebou v jednom obrázku a text u něj jen jednou.' : ''}</p>`
-            : html`<a class="btn btn-whatsapp block big-btn" href=${waLink} target="_blank" rel="noopener"
+          ${!canNative
+            ? html`<a class="btn btn-whatsapp block big-btn" href=${waLink} target="_blank" rel="noopener"
                 onClick=${() => praise(toast)}>Otevřít WhatsApp</a>
-              <p class="muted small">Otevře se WhatsApp s připraveným textem, vyberete jen skupinu. Fotky pošlete z telefonu.</p>`}
-          ${collageUrl && html`<div class="share-collage"><img src=${collageUrl} alt="Fotky pod sebou v jednom obrázku" /></div>`}
+              <p class="muted small">Otevře se WhatsApp s připraveným textem, vyberete jen skupinu. Fotky pošlete z telefonu.</p>`
+            : two
+              ? html`<button class="btn ${photosSent ? '' : 'btn-whatsapp'} block big-btn" onClick=${sendPhotos}>
+                  ${photosSent && html`<${Icon} name="check" />`} 1. Poslat ${plural(count, 'fotka', 'fotky', 'fotek')}</button>
+                <button class="btn ${photosSent ? 'btn-whatsapp' : ''} block big-btn" onClick=${() => send(() => nativeShare(text, []))}>
+                  2. Poslat text</button>
+                <p class="muted small">Nejdřív fotky, potom text – ve WhatsAppu pokaždé vyberte stejnou skupinu. Text přijde pod fotky jen jednou.</p>`
+              : html`<button class="btn btn-whatsapp block big-btn" disabled=${preparing} onClick=${() => send(() => nativeShare(text, files ?? []))}>
+                  ${preparing ? 'Připravuji fotky…' : `Poslat do WhatsAppu${what}`}</button>
+                <p class="muted small">V nabídce klepněte na WhatsApp a vyberte skupinu.</p>`}
           <div class="share-preview">${text}</div>
           <details class="share-more" open=${!!error}>
             <summary>Jiné možnosti</summary>
-            ${canNative && html`<a class="btn block" href=${waLink} target="_blank" rel="noopener"
+            ${canNative && two && html`<button class="btn block" onClick=${() => send(() => collageShare(text, files, data.w))}>
+              Fotky pod sebou v jednom obrázku i s textem</button>`}
+            ${canNative && !two && html`<a class="btn block" href=${waLink} target="_blank" rel="noopener"
               onClick=${() => praise(toast)}>WhatsApp jen s textem</a>`}
-            ${canNative && collage && html`<button class="btn block" onClick=${() => send(false)}>
-              Fotky každou zvlášť (bez textu)</button>`}
             <button class="btn block" onClick=${copy}><${Icon} name="clipboard" size=${18} /> Kopírovat text</button>
           </details>
           ${afterSave && html`<button class="btn btn-ghost block" onClick=${onClose}>Teď ne</button>`}`}
