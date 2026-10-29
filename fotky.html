@@ -42,7 +42,8 @@
 
   <script type="module">
     // Záměrně bez importu js/config.js: starší service worker v telefonu s aplikací by vrátil starou verzi
-    // souboru (bez PHOTOS_FUNCTION) a stránka by se nenačetla (28. 10.). Při změně upravit i js/config.js.
+    // souboru (bez PHOTOS_FUNCTION) a stránka by se nenačetla (28. 10.). Od verze 46 sem vedou jen odkazy ze
+    // starších zpráv ve WhatsAppu (nové zprávy odkaz nemají).
     const SUPABASE_URL = 'https://tfbirhsjavejkyscmacw.supabase.co';
     const PHOTOS_FUNCTION = 'smooth-endpoint'; // Edge Function „fotky“; prázdné = stahování bez účtu vypnuté
 

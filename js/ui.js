@@ -4,7 +4,6 @@ import { html, createContext, useContext, useEffect, useMemo, useRef, useState }
 import { can, compressImage, digitsOnly, foundAtOf, formatDateTime, formatNumber, plural, splitNumber } from './model.js';
 import { matchRanges } from './codes.js';
 import { outbox, syncOutbox } from './outbox.js';
-import { PHOTOS_FUNCTION, SUPABASE_URL } from './config.js';
 
 export const AppCtx = createContext(null);
 export const useApp = () => useContext(AppCtx);
@@ -506,7 +505,7 @@ export function DefectCard({ d, wagon = null, showComments = true, isNew = false
             ${unreadComments > 0 && html`<span class="new-badge small">${plural(unreadComments, 'nový', 'nové', 'nových')}</span>`}</a>`}
         <button class="btn btn-whatsapp" title="Poslat do WhatsAppu" aria-label="Poslat závadu do WhatsAppu"
           onClick=${() => quickShare({
-            d, w: wagon, catalog, openDialog: (prepared) => share(d.id, { prepared }), onShared: () => praise(toast),
+            d, w: wagon, openDialog: (prepared) => share(d.id, { prepared }), onShared: () => praise(toast),
           })}>
           <${Icon} name="share" size=${18} /> WhatsApp</button>
         <span class="defect-tools">
@@ -525,14 +524,6 @@ export function DefectCard({ d, wagon = null, showComments = true, isNew = false
 
 // ───── Sdílení závady do WhatsAppu (nebo jinam přes nabídku sdílení telefonu) ─────
 
-// Popis kódu z katalogu: „Brzda › Ruční brzda – Ruční brzda nefunkční“
-export function codeSummaryText(code, catalog) {
-  const c = catalog?.find((x) => x.kod === code);
-  if (!c) return '';
-  const text = [c.kontext, c.popis].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
-  return [c.cesta, text].filter(Boolean).join(' – ');
-}
-
 // Pochvala po zapsání nebo sdílení závady. Po uložení se hned nabízí sdílení – tam se už znovu neukáže.
 const PRAISE = 'Děkuji za zapsání závady, super, že jste dali vědět kolegům 👍';
 let praisedAt = 0;
@@ -542,32 +533,9 @@ export function praise(toast, { title, always = false } = {}) {
   toast(PRAISE, { title, duration: 6000 });
 }
 
-// Text zprávy; *hvězdičky* = tučně ve WhatsAppu
-export function defectShareText(d, w, catalog) {
-  const who = (name) => name || 'neznámý uživatel';
-  const lines = [`*Závada – vůz ${formatNumber(w.number)}*${w.group_name ? ` (${w.group_name})` : ''}`];
-  if (d.defect_code) {
-    const summary = codeSummaryText(d.defect_code, catalog);
-    lines.push(`Kód závady: ${d.defect_code}${summary ? ` – ${summary}` : ''}`);
-  }
-  lines.push(d.description.trim());
-  lines.push(`Zjištěno ${formatDateTime(foundAtOf(d))} · ${who(d.created_by_name)}`);
-  if (d.resolved_at) {
-    lines.push(`Opraveno ${formatDateTime(d.resolved_at)} · ${who(d.resolved_by_name)}${d.resolution_note ? ` – ${d.resolution_note}` : ''}`);
-  }
-  const videos = (d.attachments ?? []).filter((a) => a.kind === 'video').length;
-  const photos = (d.attachments ?? []).length - videos;
-  // Víc fotek přijde ve WhatsAppu v jednom zmenšeném obrázku, videa vůbec – jednotlivě ke stažení jsou
-  // na stránce fotky.html (i bez účtu, souběh se skupinou na WhatsAppu), jinak na stránce závady v aplikaci
-  const inApp = `${location.origin}${location.pathname}#/zavada/${d.id}`;
-  if (photos > 1 || videos) {
-    const what = videos ? (photos ? 'Fotky a videa ke stažení' : 'Video ke stažení') : 'Fotky v plné kvalitě ke stažení';
-    const page = SUPABASE_URL && PHOTOS_FUNCTION ? new URL(`fotky.html?z=${d.id}`, location.href).href : inApp;
-    lines.push(`${what}: ${page}`);
-  } else {
-    lines.push(`V aplikaci: ${inApp}`);
-  }
-  return lines.join('\n');
+// Text zprávy: jen číslo vozu a popis (přání uživatele 29. 10.), fotky jdou s ním; *hvězdičky* = tučně ve WhatsAppu
+export function defectShareText(d, w) {
+  return `*Vůz ${formatNumber(w.number)}*\n${d.description.trim()}`;
 }
 
 // Fotky závady jako soubory pro sdílení (videa ne – bývají velká). Fotky z paměti telefonu jsou hned.
@@ -606,78 +574,48 @@ export async function sharePhotoCopies(files, w) {
 
 const shareable = (files) => (files?.length && navigator.canShare?.({ files }) ? files : []);
 
-// ───── Víc fotek jako jeden obrázek ─────
+// ───── Víc fotek jako jeden obrázek (jen Android) ─────
 // WhatsApp v Androidu připíše sdílený text ke každé fotce zvlášť (4 fotky = 4× celý popis závady) a webová
-// aplikace to ovlivnit neumí. Víc fotek se proto posílá jako jeden obrázek (koláž): odejde vše jedním
-// sdílením a text je u obrázku jen jednou. Jednotlivé fotky jsou v aplikaci (odkaz ve zprávě).
-const COLLAGE_W = 2048;
-const COLLAGE_MAX_H = 4096;
+// aplikace to ovlivnit neumí. Víc fotek se proto na Androidu posílá jako jeden obrázek s fotkami pod sebou (přání
+// uživatele 29. 10.): odejde vše jedním sdílením a text je u obrázku jen jednou. Na iPhonu přijdou fotky zvlášť
+// a text pod nimi – tak to fungovalo od začátku a uživatel to chce zachovat. Jednotlivé fotky v plné kvalitě
+// jsou v aplikaci. WhatsApp obrázek zmenší podle delší strany (běžná kvalita ~1600 px, HD 4096 px), takže
+// čím víc fotek, tím je každá užší.
+const COLLAGE_W = 1600; // nejvíc (fotky z aplikace mají delší stranu nejvýš 1920 px)
+const COLLAGE_MAX_H = 4096; // vyšší obrázek by WhatsApp stejně zmenšil
 const COLLAGE_GAP = 8;
-const COLLAGE_PER_ROW = 3;
-const COLLAGE_ROW_MAX = 0.65; // nejvyšší řádek vůči šířce (jinak by jedna fotka na výšku zabrala celý obrázek)
 const COLLAGE_MAX = 12;
-
-// Fotky po řádcích (kratší řádky nahoře – první fotka bývá celkový pohled). Fotky v řádku mají stejnou výšku
-// a vyplní šířku, nic se neořízne; příliš vysoký řádek se sníží a vycentruje.
-function collageRows(aspects, rowCount, width) {
-  const base = Math.floor(aspects.length / rowCount);
-  const extra = aspects.length % rowCount;
-  const rows = [];
-  for (let r = 0, start = 0; r < rowCount; r++) {
-    const count = base + (r >= rowCount - extra ? 1 : 0);
-    const sum = aspects.slice(start, start + count).reduce((s, a) => s + a, 0);
-    const height = Math.min((width - COLLAGE_GAP * (count - 1)) / sum, width * COLLAGE_ROW_MAX);
-    rows.push({ start, count, height, left: (width - height * sum - COLLAGE_GAP * (count - 1)) / 2 });
-    start += count;
-  }
-  return rows;
-}
-const rowsHeight = (rows) => rows.reduce((s, r) => s + r.height, 0) + COLLAGE_GAP * (rows.length - 1);
 
 async function collageFile(files, w) {
   const imgs = (await Promise.all(files.slice(0, COLLAGE_MAX).map((f) => createImageBitmap(f).catch(() => null))))
     .filter(Boolean);
   if (imgs.length < 2) return null;
-  const aspects = imgs.map((b) => b.width / b.height);
-  // počet řádků, se kterým je obrázek nejblíž čtverci (WhatsApp ho tak ukáže celý)
-  let best = 0;
-  let bestScore = Infinity;
-  for (let r = Math.ceil(imgs.length / COLLAGE_PER_ROW); r <= imgs.length; r++) {
-    const score = Math.abs(Math.log(COLLAGE_W / rowsHeight(collageRows(aspects, r, COLLAGE_W))));
-    if (score < bestScore) { best = r; bestScore = score; }
-  }
-  let width = COLLAGE_W;
-  let rows = collageRows(aspects, best, width);
-  if (rowsHeight(rows) > COLLAGE_MAX_H) { // moc vysoký (fotky na výšku) → užší
-    width = Math.floor((width * COLLAGE_MAX_H) / rowsHeight(rows));
-    rows = collageRows(aspects, best, width);
-  }
+  // všechny fotky stejně široké, nic se neořízne; šířka podle toho, aby se vešly do COLLAGE_MAX_H
+  const gaps = COLLAGE_GAP * (imgs.length - 1);
+  const tall = imgs.reduce((s, b) => s + b.height / b.width, 0);
+  const width = Math.floor(Math.min(COLLAGE_W, (COLLAGE_MAX_H - gaps) / tall));
+  const heights = imgs.map((b) => Math.round((width * b.height) / b.width));
   const canvas = document.createElement('canvas');
   canvas.width = width;
-  canvas.height = Math.min(Math.round(rowsHeight(rows)), COLLAGE_MAX_H);
+  canvas.height = heights.reduce((s, h) => s + h, 0) + gaps;
   const g = canvas.getContext('2d');
   g.fillStyle = '#fff';
   g.fillRect(0, 0, canvas.width, canvas.height);
-  const r0 = Math.round(width / 44); // číslo fotky v rohu, ať se na ni dá v debatě odkázat
+  const r0 = Math.round(width / 30); // číslo fotky v rohu, ať se na ni dá v debatě odkázat
   g.textAlign = 'center';
   g.textBaseline = 'middle';
   g.font = `bold ${Math.round(r0 * 1.2)}px sans-serif`;
   let y = 0;
-  for (const row of rows) {
-    let x = row.left;
-    for (let j = row.start; j < row.start + row.count; j++) {
-      const cw = aspects[j] * row.height;
-      g.drawImage(imgs[j], x, y, cw, row.height);
-      g.fillStyle = 'rgba(0, 0, 0, .6)';
-      g.beginPath();
-      g.arc(x + r0 * 1.5, y + r0 * 1.5, r0, 0, 2 * Math.PI);
-      g.fill();
-      g.fillStyle = '#fff';
-      g.fillText(String(j + 1), x + r0 * 1.5, y + r0 * 1.5 + 1);
-      x += cw + COLLAGE_GAP;
-    }
-    y += row.height + COLLAGE_GAP;
-  }
+  imgs.forEach((b, i) => {
+    g.drawImage(b, 0, y, width, heights[i]);
+    g.fillStyle = 'rgba(0, 0, 0, .6)';
+    g.beginPath();
+    g.arc(r0 * 1.5, y + r0 * 1.5, r0, 0, 2 * Math.PI);
+    g.fill();
+    g.fillStyle = '#fff';
+    g.fillText(String(i + 1), r0 * 1.5, y + r0 * 1.5 + 1);
+    y += heights[i] + COLLAGE_GAP;
+  });
   imgs.forEach((b) => b.close?.());
   const blob = await new Promise((res) => canvas.toBlob(res, 'image/jpeg', 0.85));
   return blob ? new File([blob], `zavada-${w.number.slice(-4)}-fotky.jpg`, { type: 'image/jpeg' }) : null;
@@ -685,11 +623,11 @@ async function collageFile(files, w) {
 
 /**
  * Fotky pro sdílení: files = jednotlivé fotky, media = co se posílá s textem (nic, jedna fotka, nebo víc
- * fotek v jednom obrázku). Když se obrázek nepovede, pošle se s textem aspoň první fotka.
+ * fotek v jednom obrázku – jen Android). Když se obrázek nepovede, pošle se s textem aspoň první fotka.
  */
 export async function prepareShare(filesOrPromise, w) {
   const files = shareable(await filesOrPromise);
-  if (files.length < 2) return { files, media: files };
+  if (files.length < 2 || !isAndroid()) return { files, media: files };
   const one = await collageFile(files, w).catch(() => null);
   return { files, media: one ? shareable([one]) : files.slice(0, 1) };
 }
@@ -717,9 +655,9 @@ async function nativeShare(text, files) {
  * Sdílení na jedno klepnutí: rovnou otevře nabídku sdílení telefonu (text + fotky v jednom obrázku).
  * Když to nejde (počítač, fotky se stahují dlouho, telefon sdílení odmítne), otevře okno s jedním tlačítkem.
  */
-export async function quickShare({ d, w, catalog, openDialog, onShared }) {
+export async function quickShare({ d, w, openDialog, onShared }) {
   if (!w || typeof navigator.share !== 'function') { openDialog({}); return; }
-  const text = defectShareText(d, w, catalog);
+  const text = defectShareText(d, w);
   const ready = prepareShare(photoFiles(d, w), w);
   const set = await Promise.race([ready, new Promise((res) => setTimeout(() => res(null), 2500))]);
   if (set === null) { openDialog({ d, w, ready }); return; }
@@ -737,7 +675,6 @@ export async function quickShare({ d, w, catalog, openDialog, onShared }) {
  */
 export function ShareDialog({ id, afterSave = false, prepared = {}, onClose }) {
   const { api, toast } = useApp();
-  const catalog = useCatalog();
   const [data, setData] = useState(prepared.d && prepared.w ? { d: prepared.d, w: prepared.w } : null);
   // { files, media } – null = připravuji fotky
   const [set, setSet] = useState(prepared.files ? { files: prepared.files, media: prepared.media } : null);
@@ -766,10 +703,11 @@ export function ShareDialog({ id, afterSave = false, prepared = {}, onClose }) {
 
   // Náhled obrázku, který odejde (víc fotek v jednom)
   const count = set?.files.length ?? 0;
-  const collageUrl = useMemo(() => (count > 1 && set.media[0] ? URL.createObjectURL(set.media[0]) : null), [set]);
+  const collage = count > 1 && set.media[0] && set.media[0] !== set.files[0];
+  const collageUrl = useMemo(() => (collage ? URL.createObjectURL(set.media[0]) : null), [set]);
   useEffect(() => () => collageUrl && URL.revokeObjectURL(collageUrl), [collageUrl]);
 
-  const text = data ? defectShareText(data.d, data.w, catalog) : '';
+  const text = data ? defectShareText(data.d, data.w) : '';
   const canNative = typeof navigator.share === 'function';
   const preparing = canNative && set === null && !error;
   const waLink = `https://wa.me/?text=${encodeURIComponent(text)}`;
@@ -807,18 +745,18 @@ export function ShareDialog({ id, afterSave = false, prepared = {}, onClose }) {
           ${canNative
             ? html`<button class="btn btn-whatsapp block big-btn" disabled=${preparing} onClick=${() => send()}>
                 ${preparing ? 'Připravuji fotky…' : `Poslat do WhatsAppu${what}`}</button>
-              <p class="muted small">V nabídce klepněte na WhatsApp a vyberte skupinu.${count > 1
-                ? ' Fotky přijdou v jednom obrázku a text u něj jen jednou; v plné kvalitě si je kdokoli ze skupiny stáhne přes odkaz ve zprávě (i bez účtu).' : ''}</p>`
+              <p class="muted small">V nabídce klepněte na WhatsApp a vyberte skupinu.${collage
+                ? ' Fotky přijdou pod sebou v jednom obrázku a text u něj jen jednou.' : ''}</p>`
             : html`<a class="btn btn-whatsapp block big-btn" href=${waLink} target="_blank" rel="noopener"
                 onClick=${() => praise(toast)}>Otevřít WhatsApp</a>
               <p class="muted small">Otevře se WhatsApp s připraveným textem, vyberete jen skupinu. Fotky pošlete z telefonu.</p>`}
-          ${collageUrl && html`<img class="share-collage" src=${collageUrl} alt="Fotky v jednom obrázku" />`}
+          ${collageUrl && html`<div class="share-collage"><img src=${collageUrl} alt="Fotky pod sebou v jednom obrázku" /></div>`}
           <div class="share-preview">${text}</div>
           <details class="share-more" open=${!!error}>
             <summary>Jiné možnosti</summary>
             ${canNative && html`<a class="btn block" href=${waLink} target="_blank" rel="noopener"
               onClick=${() => praise(toast)}>WhatsApp jen s textem</a>`}
-            ${canNative && count > 1 && html`<button class="btn block" onClick=${() => send(false)}>
+            ${canNative && collage && html`<button class="btn block" onClick=${() => send(false)}>
               Fotky každou zvlášť (bez textu)</button>`}
             <button class="btn block" onClick=${copy}><${Icon} name="clipboard" size=${18} /> Kopírovat text</button>
           </details>
