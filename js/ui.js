@@ -729,7 +729,9 @@ export function ShareDialog({ id, afterSave = false, prepared = {}, onClose }) {
       if (e.name !== 'AbortError') setError(new Error(`Sdílení se nepovedlo: ${e.message}`));
     }
   }
+  // Text se při tom zkopíruje – ve WhatsAppu ho jde hned vložit pod fotky, bez návratu do aplikace (krok 2)
   const sendPhotos = () => send(async () => {
+    await navigator.clipboard?.writeText(text).catch(() => {});
     await nativeShare('', files);
     setPhotosSent(true);
   }, false);
@@ -762,7 +764,8 @@ export function ShareDialog({ id, afterSave = false, prepared = {}, onClose }) {
                   ${photosSent && html`<${Icon} name="check" />`} 1. Poslat ${plural(count, 'fotka', 'fotky', 'fotek')}</button>
                 <button class="btn ${photosSent ? 'btn-whatsapp' : ''} block big-btn" onClick=${() => send(() => nativeShare(text, []))}>
                   2. Poslat text</button>
-                <p class="muted small">Nejdřív fotky, potom text – ve WhatsAppu pokaždé vyberte stejnou skupinu. Text přijde pod fotky jen jednou.</p>`
+                <p class="muted small">Text zprávy se při kroku 1 zkopíruje: po odeslání fotek ho ve WhatsAppu vložte pod ně
+                  (podržet prst v poli pro zprávu → Vložit). Nebo se vraťte sem a klepněte na 2. Poslat text – do stejné skupiny.</p>`
               : html`<button class="btn btn-whatsapp block big-btn" disabled=${preparing} onClick=${() => send(() => nativeShare(text, files ?? []))}>
                   ${preparing ? 'Připravuji fotky…' : `Poslat do WhatsAppu${what}`}</button>
                 <p class="muted small">V nabídce klepněte na WhatsApp a vyberte skupinu.</p>`}
