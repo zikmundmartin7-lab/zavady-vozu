@@ -709,8 +709,10 @@ fieldset.field .check-row { margin: .45rem 0; color: var(--text); font-weight: 5
 .scanner .panel .row .btn { flex: 1; }
 .scanner .panel .row .grow { flex: 2; }
 .scanner .panel label.btn.disabled { opacity: .5; pointer-events: none; }
-.scanner .shot { display: block; max-width: 100%; max-height: 110px; margin: 0 auto .5rem; border-radius: 8px; background: #000; }
-.scanner .found { font-size: 1.6rem; text-align: center; margin: .1rem 0 .2rem; }
+/* porovnání: výřez snímku s číslem přímo nad přečteným číslem */
+.scanner .compare { margin: 0 0 .5rem; }
+.scanner .shot { display: block; max-width: 100%; max-height: 150px; margin: 0 auto .35rem; border-radius: 8px; background: #000; }
+.scanner .found { font-size: 1.7rem; text-align: center; margin: 0; }
 .scanner .hint.center { text-align: center; margin: 0 0 .8rem; }
 .scanner .maybe { margin: 0 0 .8rem; }
 .scanner .maybe .chip-btn { font-variant-numeric: tabular-nums; font-size: 1rem; }

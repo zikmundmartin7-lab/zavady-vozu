@@ -1,6 +1,6 @@
 // Service worker: rychlé spuštění z paměti telefonu, offline záloha a push upozornění na nové závady.
 
-const CACHE = 'zavady-v52'; // zvýšit spolu s APP_VERSION v js/version.js
+const CACHE = 'zavady-v53'; // zvýšit spolu s APP_VERSION v js/version.js
 const PHOTO_CACHE = 'zavady-foto'; // fotky závad a obrázky katalogu (přežije novou verzi aplikace)
 const SHARED_CACHE = 'zavady-sdilene'; // fotky sdílené do aplikace z galerie, než si je vyzvedne formulář (js/draft.js)
 // Skener čísla vozu: neuronové sítě a ONNX runtime (asi 25 MB). V terénu nemusí být signál, proto se stáhnou
