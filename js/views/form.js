@@ -81,6 +81,7 @@ export function DefectFormView({ editId, params }) {
   const [removeIds, setRemoveIds] = useState([]);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState(null);
+  const [Scanner, setScanner] = useState(null); // skener čísla kamerou (načte se až při prvním použití)
   // Rozepsaná nová závada (draft.js), zvlášť pro každý vůz, ze kterého se formulář otevřel
   const draftKey = editId ? null : presetWagonId ? `vuz:${presetWagonId}` : 'nova';
   const [draftReady, setDraftReady] = useState(!draftKey);
@@ -137,6 +138,15 @@ export function DefectFormView({ editId, params }) {
     setFoundAt(toLocalInput(new Date()));
     setFiles([]);
     setRestoredAt(null);
+  }
+
+  async function openScanner() {
+    try {
+      const m = await import('./scanner.js');
+      setScanner(() => m.Scanner);
+    } catch {
+      toast('Skener se nepodařilo načíst. Zkontrolujte signál, nebo číslo zadejte ručně.', { kind: 'error' });
+    }
   }
 
   // Po zadání celého čísla zjistit, jestli vůz už existuje
@@ -265,9 +275,13 @@ export function DefectFormView({ editId, params }) {
             ? html`<div><${WagonNumber} number=${fixedWagon.data.number} class="big" />
                 <div class="muted">Skupina: ${fixedWagon.data.group_name}</div></div>`
             : html`
-              <input class="number-input" inputmode="numeric" autocomplete="off" placeholder="XX XX XXXX XXX-X"
-                value=${formatNumber(number)} onInput=${(e) => setNumber(digitsOnly(e.currentTarget.value).slice(0, 12))} />
-              <div class="hint">${number.length}/12 číslic</div>
+              <div class="number-row">
+                <input class="number-input" inputmode="numeric" autocomplete="off" placeholder="XX XX XXXX XXX-X"
+                  value=${formatNumber(number)} onInput=${(e) => setNumber(digitsOnly(e.currentTarget.value).slice(0, 12))} />
+                <button type="button" class="btn scan-btn" onClick=${openScanner} aria-label="Načíst číslo kamerou"
+                  title="Načíst číslo kamerou"><${Icon} name="camera" size=${26} /></button>
+              </div>
+              <div class="hint">${number.length}/12 číslic${!number && ' · číslo můžete načíst kamerou (tlačítko vpravo)'}</div>
               ${complete && !isValidCheckDigit(number) && html`
                 <div class="warn"><${Icon} name="alert" size=${16} /> Kontrolní číslice nesedí – pro toto číslo by měla být ${checkDigit(number)}.</div>`}
               ${complete && found && found !== 'offline' && html`
@@ -323,5 +337,7 @@ export function DefectFormView({ editId, params }) {
           ${busy || (editId ? 'Uložit změny' : 'Uložit závadu')}
         </button>
       </form>
+      ${Scanner && html`<${Scanner} onClose=${() => setScanner(null)}
+        onDone=${(n) => { setNumber(n); setScanner(null); }} />`}
     </main>`;
 }

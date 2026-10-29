@@ -3,6 +3,7 @@
 import { html, useEffect, useState } from '../../vendor/preact-htm.js';
 import { DEFAULT_PASSWORD, ROLES, can, plural } from '../model.js';
 import { APP_VERSION } from '../version.js';
+import { ocrReady, prefetchOcr } from '../offline.js';
 import {
   Empty, ErrorBox, Icon, InstallOffer, Loading, PasswordInput, TopBar, enablePush, isIos, isStandalone, setPushOff,
   swVersion, updateApp, useApp, useLoad,
@@ -347,6 +348,30 @@ function ChangePassword() {
 // Verze aplikace = verze, která právě běží (APP_VERSION). Service worker může mít na pozadí staženou novější
 // (sw.js → CACHE) – ta se použije až po načtení znovu, proto se v tu chvíli nabídne tlačítko.
 // Tlačítko Aktualizovat: najde novou verzi na webu, stáhne ji a aplikaci načte znovu (bez zavírání).
+// Skener čísla vozu: je rozpoznávání v telefonu? Před cestou do terénu (bez signálu) se tu dá ověřit;
+// chybí-li a je signál, rovnou se stáhne.
+function OcrStatus() {
+  const [state, setState] = useState(null); // ready | loading | missing
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      if (await ocrReady()) { if (alive) setState('ready'); return; }
+      if (!navigator.onLine) { if (alive) setState('missing'); return; }
+      if (alive) setState('loading');
+      await prefetchOcr().catch(() => {});
+      const ok = await ocrReady();
+      if (alive) setState(ok ? 'ready' : 'missing');
+    })();
+    return () => { alive = false; };
+  }, []);
+  if (!state) return null;
+  return html`<p class="muted small">${{
+    ready: 'Skener čísla vozu je stažený – funguje i bez signálu.',
+    loading: 'Stahuji skener čísla vozu (asi 25 MB, jen jednou)…',
+    missing: 'Skener čísla vozu ještě není stažený – stáhne se sám, až bude signál.',
+  }[state]}</p>`;
+}
+
 function AppVersion() {
   const { toast } = useApp();
   const [downloaded, setDownloaded] = useState(0);
@@ -366,6 +391,7 @@ function AppVersion() {
   return html`
     <div class="app-version">
       <p class="muted small">Verze aplikace ${APP_VERSION}${downloaded > APP_VERSION ? ` · stažená je novější verze ${downloaded}` : ''}</p>
+      <${OcrStatus} />
       <button type="button" class="btn" disabled=${busy} onClick=${update}>
         <${Icon} name="download" size=${18} /> ${busy ? 'Hledám novou verzi…' : 'Aktualizovat'}</button>
     </div>`;

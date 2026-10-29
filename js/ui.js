@@ -176,6 +176,8 @@ const ICONS = {
   share: `${circle(18, 5, 3)}${circle(6, 12, 3)}${circle(18, 19, 3)}M8.6 13.5l6.8 4M15.4 6.5l-6.8 4`,
   'ios-share': 'M12 3v12M8 7l4-4 4 4M5 11v9h14v-9',
   eye: `M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z${circle(12, 12, 3)}`,
+  light: 'M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z',
+  sun: `${circle(12, 12, 4)}M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4`,
   'eye-off': 'M3 3l18 18M10.6 5.1A10.4 10.4 0 0 1 12 5c6.5 0 10 7 10 7a17.6 17.6 0 0 1-3.2 4.2M6.6 6.6C3.9 8.3 2 12 2 12s3.5 7 10 7c1.9 0 3.6-.6 5-1.4M9.9 9.9a3 3 0 0 0 4.2 4.2',
 };
 export const Icon = ({ name, size = 20, class: cls = '' }) => html`
@@ -1172,7 +1174,7 @@ export function CameraOffer() {
 
 // Android; tablet (a telefon s „Verzí pro počítač“) se hlásí jako počítač s Linuxem – pozná se podle
 // dotykového displeje (počítače s Linuxem a dotykem jsou vzácné, Chromebook má v userAgent CrOS)
-const isAndroid = () => /Android/.test(navigator.userAgent) || navigator.userAgentData?.platform === 'Android'
+export const isAndroid = () => /Android/.test(navigator.userAgent) || navigator.userAgentData?.platform === 'Android'
   || (/Linux/.test(navigator.userAgent) && !/CrOS/.test(navigator.userAgent) && navigator.maxTouchPoints > 0);
 // Prohlížeč uvnitř jiné aplikace (WhatsApp, Messenger, Instagram…) – odtud instalace nejde
 const isInApp = () => /; wv\)|FBAN|FBAV|Instagram|WhatsApp|Line\//.test(navigator.userAgent);

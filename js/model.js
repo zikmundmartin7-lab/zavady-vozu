@@ -32,6 +32,81 @@ export const isCompleteNumber = (n) => /^\d{12}$/.test(digitsOnly(n));
 export const isValidCheckDigit = (n) =>
   isCompleteNumber(n) && checkDigit(n) === Number(digitsOnly(n)[11]);
 
+// ───── Číslo vozu v textu přečteném kamerou (skener, js/views/scanner.js) ─────
+// Převzato z aplikace Výkaz vozů (js/model.js numberCandidates) – při úpravách držet obě kopie stejné.
+
+// Kódy států (3. a 4. číslice) – jen pro řazení kandidátů, neznámý stát číslo neodmítne.
+const COUNTRIES = new Set([10, 20, 21, 22, 23, 24, 25, 26, 27, 28, 41, 44, 50, 51, 52, 53, 54, 55, 56, 57, 58,
+  59, 60, 65, 66, 67, 68, 70, 71, 72, 73, 74, 75, 76, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 94]);
+
+// Znaky, které síť u číslic plete s písmeny (jen v „převážně číselných“ slovech).
+const LOOKALIKE = { O: '0', o: '0', Q: '0', D: '0', I: '1', l: '1', i: '1', '|': '1', '!': '1', Z: '2', z: '2',
+  S: '5', s: '5', B: '8', G: '6', b: '6', g: '9', q: '9' };
+
+// Přečtené řádky → číselná slova v pořadí čtení. Slovo s většinou číslic se opraví (O→0, I→1 …),
+// slova z písmen (RIV, TEN, D-DB, PL-FPL …) se přeskočí – na novějších vozech bývají mezi částmi čísla.
+// Desetinná čísla (tabulka zatížení „48,0“, „62.5“) nejsou části čísla vozu. Čárka v čísle vozu nebývá nikdy,
+// tečka jen místo pomlčky před kontrolní číslicí (za trojčíslím) – proto se maže jen tečka za 1–2 číslicemi.
+const DECIMAL = /\b\d+,\d+\b|\b\d{1,2}\.\d+\b/g;
+
+function digitTokens(lines) {
+  const tokens = [];
+  for (const [li, l] of lines.entries()) {
+    for (const word of l.text.replace(DECIMAL, ' ').split(/[^0-9A-Za-z|!]+/)) {
+      const digits = word.replace(/\D/g, '').length;
+      if (!digits || digits / word.length < 0.6) continue;
+      const d = [...word].map((c) => (/\d/.test(c) ? c : LOOKALIKE[c] ?? '')).join('');
+      tokens.push({ d, li, row: l.row ?? 0, h: l.h ?? 1, conf: l.conf ?? 0 });
+    }
+  }
+  return tokens;
+}
+
+// Čísla na voze bývají rozdělená 2-2-4-3-1 (nebo po řádcích 2 / 2 / 4 3-1).
+const GROUP_ENDS = new Set([2, 4, 8, 11, 12]);
+
+/**
+ * Najde v přečtených řádcích (výstup readText z js/ocr.js) možná čísla vozů – i rozdělená do více řádků.
+ * Vrací [{ number, valid, sure, score, lines }] od nejpravděpodobnějšího; valid = sedí kontrolní číslice,
+ * sure = navíc známý kód státu a rozdělení do skupin, lines = indexy řádků, ze kterých se číslo složilo.
+ */
+export function numberCandidates(lines) {
+  const tokens = digitTokens(lines);
+  const found = new Map();
+  const add = (number, parts, aligned) => {
+    const valid = isValidCheckDigit(number);
+    const country = COUNTRIES.has(Number(number.slice(2, 4)));
+    let n = 0;
+    const grouped = aligned && parts.every((t) => GROUP_ENDS.has((n += t.d.length)));
+    const rows = parts.at(-1).row - parts[0].row;
+    const score = parts.reduce((a, t) => a + t.conf, 0) / parts.length - rows * 0.3
+      + (valid ? 10 : 0) + (country ? 2 : 0) + (grouped ? 2 : aligned ? 1 : 0);
+    // „jisté“ číslo: sedí kontrolní číslice, kód státu i rozdělení do skupin (náhodná shoda je velmi vzácná)
+    const sure = valid && country && grouped;
+    const prev = found.get(number);
+    if (!prev || prev.score < score) found.set(number, { number, valid, sure, score, lines: [...new Set(parts.map((t) => t.li))] });
+  };
+  for (let i = 0; i < tokens.length; i++) {
+    let all = '';
+    const parts = [];
+    for (let j = i; j < tokens.length && j < i + 8; j++) {
+      const t = tokens[j];
+      // části jednoho čísla: nejvýš 3 řádky pod sebou a podobně velké písmo
+      if (t.row - tokens[i].row > 2) break;
+      if (Math.max(t.h, tokens[i].h) / Math.min(t.h, tokens[i].h) > 1.8) continue;
+      all += t.d;
+      parts.push(t);
+      if (all.length === 12) add(all, parts, true);
+      if (all.length >= 12) {
+        if (parts.length === 1) for (let k = 0; k + 12 <= all.length; k++) add(all.slice(k, k + 12), parts, false);
+        else add(all.slice(0, 12), parts, false);
+        break;
+      }
+    }
+  }
+  return [...found.values()].sort((a, b) => b.score - a.score);
+}
+
 // Vyhledávání: do 4 číslic se hledá podle posledního čtyřčíslí (XXX-X, vč. kontrolní číslice),
 // při delším zadání kdekoli v celém čísle.
 export const SEARCH_DIGITS = 4;

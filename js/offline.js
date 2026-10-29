@@ -51,6 +51,40 @@ export function prefetchAll(api) {
   return running;
 }
 
+// ───── Skener čísla vozu: rozpoznávání (asi 25 MB) musí být v telefonu dřív, než vozmistr vyjde do terénu ─────
+// Stahuje ho service worker hned s novou verzí aplikace; když se to tehdy nepovede (slabý signál),
+// dotáhne se tady při spuštění aplikace se signálem. Název zásoby a seznam souborů stejně jako v sw.js.
+
+export const OCR_CACHE = 'zavady-ocr-v1';
+const OCR_FILES = ['vendor/ort/ort.wasm.min.mjs', 'vendor/ort/ort-wasm-simd-threaded.mjs',
+  'vendor/ort/ort-wasm-simd-threaded.wasm', 'models/det.onnx', 'models/rec_latin.onnx', 'models/rec_latin_dict.txt']
+  .map((u) => new URL(`../${u}`, import.meta.url).href);
+
+async function missingOcr() {
+  const cache = await caches.open(OCR_CACHE);
+  const hits = await Promise.all(OCR_FILES.map((u) => cache.match(u)));
+  return OCR_FILES.filter((_, i) => !hits[i]);
+}
+
+/** Je rozpoznávání celé v paměti telefonu (skener pak funguje i bez signálu)? */
+export const ocrReady = () => (window.caches ? missingOcr().then((m) => m.length === 0, () => false) : Promise.resolve(false));
+
+let ocrRunning = null;
+/** Stáhne chybějící soubory rozpoznávání. Souběžné volání vrátí běžící stahování. */
+export function prefetchOcr() {
+  ocrRunning ??= (async () => {
+    if (!window.caches || !navigator.serviceWorker) return;
+    // až po instalaci service workeru – ten je při instalaci stahuje sám, ať se nestahují dvakrát
+    await navigator.serviceWorker.ready;
+    const cache = await caches.open(OCR_CACHE);
+    for (const u of await missingOcr()) {
+      if (!navigator.onLine) return;
+      await cache.add(u);
+    }
+  })().finally(() => { ocrRunning = null; });
+  return ocrRunning;
+}
+
 // Fotky neopravených závad do paměti telefonu (každá jen jednou); fotky smazaných příloh se uklidí
 async function storePhotos(api, all, open) {
   if (api.mode !== 'supabase' || !window.caches) return;

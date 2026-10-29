@@ -1,14 +1,23 @@
 // Service worker: rychlé spuštění z paměti telefonu, offline záloha a push upozornění na nové závady.
 
-const CACHE = 'zavady-v48'; // zvýšit spolu s APP_VERSION v js/version.js
+const CACHE = 'zavady-v49'; // zvýšit spolu s APP_VERSION v js/version.js
 const PHOTO_CACHE = 'zavady-foto'; // fotky závad a obrázky katalogu (přežije novou verzi aplikace)
 const SHARED_CACHE = 'zavady-sdilene'; // fotky sdílené do aplikace z galerie, než si je vyzvedne formulář (js/draft.js)
+// Skener čísla vozu: neuronové sítě a ONNX runtime (asi 25 MB). V terénu nemusí být signál, proto se stáhnou
+// hned s novou verzí aplikace (jen poprvé, pak zůstávají v paměti telefonu i přes další verze). Když se to
+// nepovede, dotáhne je aplikace při dalším spuštění se signálem (prefetchOcr v js/offline.js), případně
+// skener při otevření. Při změně sítí nebo runtime zvýšit; stejný název a seznam souborů je v js/offline.js.
+const OCR_CACHE = 'zavady-ocr-v1';
+const OCR_FILES = ['vendor/ort/ort.wasm.min.mjs', 'vendor/ort/ort-wasm-simd-threaded.mjs',
+  'vendor/ort/ort-wasm-simd-threaded.wasm', 'models/det.onnx', 'models/rec_latin.onnx', 'models/rec_latin_dict.txt'];
+const OCR_PATHS = new Set(OCR_FILES.map((u) => new URL(u, location.href).pathname));
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
   'js/app.js', 'js/config.js', 'js/model.js', 'js/codes.js', 'js/ui.js', 'js/api/index.js', 'js/api/demo.js', 'js/api/supabase.js',
   'js/views/account.js', 'js/views/codes.js', 'js/views/defect.js', 'js/views/form.js', 'js/views/groups.js',
   'js/views/regulations.js', 'js/views/wagon.js', 'js/views/admin.js', 'js/views/overview.js',
   'js/outbox.js', 'js/draft.js', 'js/history.js', 'js/xlsx.js', 'js/offline.js', 'js/version.js',
+  'js/views/scanner.js', 'js/light.js', 'js/ocr.js', 'js/ort.js',
   'vendor/preact-htm.js', 'vendor/supabase.js', 'icons/icon.svg?v=2', 'icons/icon-192.png?v=2', 'icons/badge-96.png?v=2',
 ];
 
@@ -28,6 +37,12 @@ self.addEventListener('install', (e) => {
     }));
     const cache = await caches.open(CACHE);
     await Promise.all(files.map(([u, res]) => cache.put(u, res)));
+    // skener čísla vozu: chybějící soubory (když se některý nestáhne, nová verze se přesto nainstaluje)
+    const ocr = await caches.open(OCR_CACHE);
+    await Promise.all(OCR_FILES.map(async (u) => {
+      const key = new URL(u, location.href).href;
+      if (!(await ocr.match(key))) await ocr.add(key).catch(() => {});
+    }));
     await self.skipWaiting();
   })());
 });
@@ -37,10 +52,12 @@ self.addEventListener('message', (e) => {
   if (e.data?.type === 'version') e.ports[0]?.postMessage(CACHE);
 });
 
-// Po aktivaci smazat starou verzi a otevřeným oknům říct, že je k dispozici nová
+// Po aktivaci smazat starou verzi a otevřeným oknům říct, že je k dispozici nová. Jen vlastní zásoby
+// (zavady-…): na stejné adrese zikmundmartin7-lab.github.io běží i Výkaz vozů se svými (vykaz-…).
 self.addEventListener('activate', (e) => {
   e.waitUntil((async () => {
-    const old = (await caches.keys()).filter((k) => ![CACHE, PHOTO_CACHE, SHARED_CACHE].includes(k));
+    const keep = [CACHE, PHOTO_CACHE, SHARED_CACHE, OCR_CACHE];
+    const old = (await caches.keys()).filter((k) => k.startsWith('zavady-') && !keep.includes(k));
     await Promise.all(old.map((k) => caches.delete(k)));
     await self.clients.claim();
     if (old.length) {
@@ -75,6 +92,19 @@ self.addEventListener('fetch', (e) => {
     return;
   }
   if (url.origin !== location.origin) return;
+  // Skener čísla vozu (sítě, ONNX runtime): jednou stáhnout a pak jen z paměti telefonu
+  if (OCR_PATHS.has(url.pathname)) {
+    e.respondWith((async () => {
+      const cache = await caches.open(OCR_CACHE);
+      const key = url.origin + url.pathname;
+      const hit = await cache.match(key);
+      if (hit) return hit;
+      const res = await fetch(e.request);
+      if (res.ok) cache.put(key, res.clone());
+      return res;
+    })());
+    return;
+  }
   // Videonávod: přehrává se po částech (Range), iPhone jinak video z paměti nespustí – vždy rovnou ze sítě
   if (e.request.headers.has('range') || /\/video\/[^/]+\.mp4$/.test(url.pathname)) return;
   // Návod k instalaci a stránka s fotkami závady (fotky.html): vždy nejdřív ze sítě (ověří se i proti paměti

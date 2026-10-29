@@ -7,7 +7,7 @@ import {
   AppCtx, Lightbox, Loading, PullToRefresh, ShareDialog, Toasts, clearLocalCache, isPushOff, readCached, reloadApp,
   writeCached,
 } from './ui.js';
-import { lastPrefetchAt, prefetchAll } from './offline.js';
+import { lastPrefetchAt, prefetchAll, prefetchOcr } from './offline.js';
 import { AccountView, LoginView, PendingView, RecoveryView, UsersView } from './views/account.js';
 import { CommentInboxView, DefectView } from './views/defect.js';
 import { syncOutbox } from './outbox.js';
@@ -209,7 +209,7 @@ function App() {
   const sendOutbox = () => syncOutbox(api).then((n) => {
     if (n) { toast(`Odesláno ze zápisu bez signálu: ${n}.`); setVersion((v) => v + 1); }
   }, () => {});
-  const prefetch = () => prefetchAll(api).catch(() => {});
+  const prefetch = () => { prefetchAll(api).catch(() => {}); prefetchOcr().catch(() => {}); };
   useEffect(() => {
     if (!can.use(me)) return undefined;
     const send = () => navigator.onLine && sendOutbox();

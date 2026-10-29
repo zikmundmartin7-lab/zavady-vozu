@@ -303,6 +303,10 @@ a.card.list-row { padding: 16px; }
 }
 .date-input:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
 .number-input { font-size: 1.5rem; letter-spacing: .04em; font-variant-numeric: tabular-nums; margin-bottom: 0; }
+.number-row { display: flex; gap: 8px; align-items: stretch; }
+/* celé číslo se vedle tlačítka kamery musí vejít i na úzký telefon (360 px) */
+.number-row .number-input { flex: 1; min-width: 0; padding: .6rem; letter-spacing: .02em; font-size: min(1.5rem, 6.2vw); }
+.scan-btn { flex: none; width: 52px; padding: 0; background: var(--primary); border-color: var(--primary); color: #fff; }
 .chips-select { display: flex; flex-wrap: wrap; gap: 8px; margin-top: .5rem; }
 .chip-btn {
   border: 1px solid var(--border); background: var(--surface); border-radius: 999px; padding: .45rem .9rem; cursor: pointer;
@@ -666,3 +670,51 @@ fieldset.field .check-row { margin: .45rem 0; color: var(--text); font-weight: 5
 .camera-steps li { margin: .25rem 0; }
 .camera-warn > svg { flex: none; margin-top: .15rem; }
 .camera-warn .btn { margin-top: .1rem; }
+
+/* ───── Skener čísla vozu kamerou (js/views/scanner.js, převzato z Výkazu vozů) ───── */
+/* pod hláškami (.toasts z-index 50), aby bylo vidět např. „Svítilnu tento telefon … nedovolí“ */
+.scanner { position: fixed; inset: 0; z-index: 49; background: #000; color: #fff; display: flex; flex-direction: column; }
+.scanner .view { position: relative; flex: 1; overflow: hidden; }
+.scanner video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.scanner .guide {
+  position: absolute; left: 7%; right: 7%; top: 30%; height: 26%;
+  border: 3px solid rgba(255, 255, 255, .9); border-radius: 14px;
+  box-shadow: 0 0 0 100vmax rgba(0, 0, 0, .45);
+}
+.scanner .guide.hit { border-color: #51cf66; }
+.scanner .top {
+  position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: .5rem;
+  padding: max(.5rem, env(safe-area-inset-top)) .75rem .5rem;
+}
+.scanner .top .icon-btn { color: #fff; background: rgba(0, 0, 0, .4); width: 44px; height: 44px; }
+.scanner .top .res { font-size: .75rem; opacity: .75; text-shadow: 0 1px 2px #000; font-variant-numeric: tabular-nums; }
+.scanner .tip { position: absolute; left: 0; right: 0; top: calc(30% - 2.6rem); padding: 0 1rem; text-align: center; font-size: .95rem; text-shadow: 0 1px 3px #000; }
+.scanner .reading {
+  position: absolute; left: 0; right: 0; top: calc(56% + .8rem); text-align: center;
+  font-size: 1.3rem; font-weight: 700; letter-spacing: .05em; text-shadow: 0 1px 3px #000; font-variant-numeric: tabular-nums;
+}
+.scanner .msg { padding: 4.5rem 1.2rem 2rem; text-align: center; }
+.scanner .msg .camera-steps { text-align: left; }
+.scanner .panel {
+  background: var(--surface); color: var(--text); border-radius: 18px 18px 0 0;
+  padding: 16px 16px max(16px, env(safe-area-inset-bottom));
+}
+.scanner .panel .warn { margin: 0 0 .7rem; }
+.scanner .panel .row .btn { flex: 1; }
+.scanner .panel .row .grow { flex: 2; }
+.scanner .panel label.btn.disabled { opacity: .5; pointer-events: none; }
+.scanner .shot { display: block; max-width: 100%; max-height: 110px; margin: 0 auto .5rem; border-radius: 8px; background: #000; }
+.scanner .found { font-size: 1.6rem; text-align: center; margin: .1rem 0 .2rem; }
+.scanner .hint.center { text-align: center; margin: 0 0 .8rem; }
+.scanner .maybe { margin: 0 0 .8rem; }
+.scanner .maybe .chip-btn { font-variant-numeric: tabular-nums; font-size: 1rem; }
+
+/* světlo kamery: svítilna a jas obrazu */
+.scanner .top .lightbtn.on { background: #ffd43b; color: #000; }
+.jas {
+  position: absolute; left: 12px; right: 12px; top: calc(max(.5rem, env(safe-area-inset-top)) + 56px); z-index: 2;
+  display: flex; align-items: center; gap: .5rem; padding: .45rem .7rem; border-radius: 12px;
+  background: rgba(0, 0, 0, .6); color: #fff; font-size: .85rem; font-weight: 600;
+}
+.jas input { flex: 1; min-width: 0; accent-color: #ffd43b; }
+.jas b { min-width: 2.2em; text-align: right; }
