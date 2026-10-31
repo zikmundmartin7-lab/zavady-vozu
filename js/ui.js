@@ -419,6 +419,7 @@ export function WagonSearch({ groupId, onQuery }) {
 
 // ───── Karta závady ─────
 
+// Ve videonávodu (video/zadani-zavady-android.mp4) – vzhled, pořadí a texty neměnit bez souhlasu uživatele (README → návod, videonávody).
 export function DefectCard({ d, wagon = null, showComments = true, isNew = false }) {
   const { api, me, refresh, toast, openMedia, share, commentInbox } = useApp();
   const unreadComments = commentInbox?.find((r) => r.defect_id === d.id)?.unread ?? 0;
@@ -1000,6 +1001,7 @@ export async function enablePush(api, toast, userId) {
 }
 
 /** Karta na úvodní obrazovce: zapnutí upozornění jedním klepnutím (+ Povolit v telefonu). */
+// Ve videonávodu (video/navod-android.mp4) – vzhled, pořadí a texty neměnit bez souhlasu uživatele (README → návod, videonávody).
 export function PushOffer() {
   const { api, me, toast } = useApp();
   const [state, setState] = useState(null); // null = nic | 'offer' | 'denied'

@@ -74,6 +74,7 @@ function errorText(code) {
 }
 
 /** Tlačítko Diktovat: rozpoznaný text předá po větách do onText, průběžně ukazuje, co slyší. */
+// Ve videonávodu (video/zadani-zavady-android.mp4) – vzhled, pořadí a texty neměnit bez souhlasu uživatele (README → návod, videonávody).
 export function DictateButton({ onText }) {
   const { toast } = useApp();
   const [listening, setListening] = useState(false);

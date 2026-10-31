@@ -30,6 +30,8 @@ function DemoLogin() {
 const HAD_ACCOUNT = 'zavady-had-account';
 const hadAccount = () => { try { return !!localStorage.getItem(HAD_ACCOUNT); } catch { return false; } };
 
+// Přihlášení, registrace a čekání na schválení (RealLogin, LoginView, PendingView) jsou ve videonávodu
+// (video/navod-android.mp4) – vzhled, pořadí a texty neměnit bez souhlasu uživatele (README → návod, videonávody).
 function RealLogin() {
   const { api } = useApp();
   // null = úvodní volba „Jsem tu poprvé“ / „Už mám účet“ (častá chyba: nový uživatel se zkouší přihlásit)

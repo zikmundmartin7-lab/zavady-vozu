@@ -1,4 +1,5 @@
 // Kódy závad podle přílohy 9 VSP: záložka s hledáním v katalogu a pole pro kód ve formuláři závady.
+// Pole pro kód a okno Katalog závad jsou ve videonávodu (video/zadani-zavady-android.mp4) – vzhled, pořadí a texty neměnit bez souhlasu uživatele (README → návod, videonávody).
 
 import { html, useEffect, useMemo, useRef, useState } from '../../vendor/preact-htm.js';
 import {

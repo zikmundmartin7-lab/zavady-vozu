@@ -7,6 +7,7 @@ import {
   UserButton, WagonNumber, WagonSearch, useApp, useLoad,
 } from '../ui.js';
 
+// Úvodní obrazovka je v obou videonávodech (video/navod-android.mp4, video/zadani-zavady-android.mp4) – vzhled, pořadí a texty neměnit bez souhlasu uživatele (README → návod, videonávody).
 export function HomeView() {
   const { api } = useApp();
   const groups = useLoad(() => api.listGroups(), [], 'groups');

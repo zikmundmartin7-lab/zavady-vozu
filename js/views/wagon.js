@@ -1,4 +1,5 @@
 // Detail vozu: aktivní závady, skrytá historie oprav, správa vozu pro administrátora.
+// Obrazovka vozu po uložení závady je ve videonávodu (video/zadani-zavady-android.mp4) – vzhled, pořadí a texty neměnit bez souhlasu uživatele (README → návod, videonávody).
 
 import { html, useEffect, useRef, useState } from '../../vendor/preact-htm.js';
 import { can, checkDigit, formatNumber, foundAtOf, groupLabel, isValidCheckDigit, plural } from '../model.js';

@@ -1,4 +1,5 @@
 // Formulář nové závady / úpravy závady (číslo vozu, kód závady, popis, datum zjištění, fotky a videa).
+// Ve videonávodu (video/zadani-zavady-android.mp4) – vzhled, pořadí a texty neměnit bez souhlasu uživatele (README → návod, videonávody).
 
 import { html, useEffect, useMemo, useRef, useState } from '../../vendor/preact-htm.js';
 import { CODE_RE } from '../codes.js';
