@@ -4,8 +4,8 @@ import { html, render, useCallback, useEffect, useState } from '../vendor/preact
 import { api } from './api/index.js';
 import { can, formatNumber } from './model.js';
 import {
-  AppCtx, Lightbox, Loading, PullToRefresh, ShareDialog, Toasts, clearLocalCache, isPushOff, readCached, reloadApp,
-  writeCached,
+  AppCtx, Lightbox, Loading, PullToRefresh, ShareDialog, Toasts, clearLocalCache, forgetScreen, isPushOff, readCached, reloadApp,
+  restoreScroll, writeCached,
 } from './ui.js';
 import { lastPrefetchAt, prefetchAll, prefetchOcr } from './offline.js';
 import { AccountView, LoginView, PendingView, RecoveryView, UsersView } from './views/account.js';
@@ -43,7 +43,7 @@ function parseRoute(hash) {
 function useRoute() {
   const [route, setRoute] = useState(parseRoute(location.hash));
   useEffect(() => {
-    const onChange = () => { setRoute(parseRoute(location.hash)); scrollTo(0, 0); };
+    const onChange = () => { setRoute(parseRoute(location.hash)); restoreScroll(); };
     addEventListener('hashchange', onChange);
     return () => removeEventListener('hashchange', onChange);
   }, []);
@@ -308,7 +308,7 @@ function App() {
     },
     openMedia: (items, index, opts = {}) => setMedia({ items, index, ...opts }),
     share: (id, opts = {}) => setSharing({ id, ...opts }),
-    resetTab: () => { setTabReset((n) => n + 1); scrollTo(0, 0); },
+    resetTab: () => { forgetScreen(); setTabReset((n) => n + 1); scrollTo(0, 0); },
     pendingUsers, newDefects, seenWagons, commentInbox,
     // Komentáře závady jsou přečtené (otevřená závada) – hned zmizí z odznaku, databáze se dozví na pozadí
     commentsSeen: (defectId) => {

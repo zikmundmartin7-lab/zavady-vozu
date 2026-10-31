@@ -1,10 +1,10 @@
 // Úvodní obrazovka (skupiny vozů + hledání) a obrazovka jedné skupiny.
 
 import { html, useState } from '../../vendor/preact-htm.js';
-import { formatDay, plural } from '../model.js';
+import { formatDay, foundAtOf, plural } from '../model.js';
 import {
-  Badge, BottomNav, CameraOffer, CommentsFab, Empty, ErrorBox, Fab, GroupName, Icon, InstallOffer, Loading, NewBadge, OpenCount, OutboxBanner, PushOffer, TopBar,
-  UserButton, WagonNumber, WagonSearch, useApp, useLoad,
+  Badge, BottomNav, CameraOffer, CommentsFab, DefectCard, Empty, ErrorBox, Fab, GroupName, Icon, InstallOffer, Loading, NewBadge, OpenCount,
+  OutboxBanner, PushOffer, TopBar, UserButton, WagonNumber, WagonSearch, isNewDefect, useApp, useLoad, useScreenState, useWagonSeen,
 } from '../ui.js';
 
 // Úvodní obrazovka je v obou videonávodech (video/navod-android.mp4, video/zadani-zavady-android.mp4) – vzhled, pořadí a texty neměnit bez souhlasu uživatele (README → návod, videonávody).
@@ -51,29 +51,66 @@ function lastDefectDay(iso) {
 }
 
 // showLast: pod číslem vozu, kdy byla zapsaná jeho nejnovější závada (podle toho je seznam seřazený)
-function WagonList({ wagons, showLast = false }) {
+// opened/onToggle: klepnutím se vůz rozbalí přímo v seznamu (přání uživatele 31. 10. – jako pohyby v internetovém
+// bankovnictví, ostatní vozy zůstanou vidět), bez nich vede řádek na obrazovku vozu
+function WagonList({ wagons, showLast = false, opened = null, onToggle }) {
   return html`
     <ul class="list">
-      ${wagons.map((w) => html`
-        <li key=${w.id}>
-          <a class="list-row" href="#/vuz/${w.id}">
-            ${showLast && w.last_defect_at
-              ? html`<span class="wagon-col"><${WagonNumber} number=${w.number} />
-                  <span class="last-defect">Nejnovější závada ${lastDefectDay(w.last_defect_at)}</span></span>`
-              : html`<${WagonNumber} number=${w.number} />`}
-            <${OpenCount} w=${w} />
-            <${Icon} name="right" size=${18} class="muted" />
-          </a>
-        </li>`)}
+      ${wagons.map((w) => {
+        const row = html`
+          ${showLast && w.last_defect_at
+            ? html`<span class="wagon-col"><${WagonNumber} number=${w.number} />
+                <span class="last-defect">Nejnovější závada ${lastDefectDay(w.last_defect_at)}</span></span>`
+            : html`<${WagonNumber} number=${w.number} />`}
+          <${OpenCount} w=${w} />`;
+        if (!opened) {
+          return html`
+            <li key=${w.id}>
+              <a class="list-row" href="#/vuz/${w.id}">${row}<${Icon} name="right" size=${18} class="muted" /></a>
+            </li>`;
+        }
+        const isOpen = opened.includes(w.id);
+        return html`
+          <li key=${w.id} class=${isOpen ? 'open' : ''}>
+            <button type="button" class="list-row list-btn" aria-expanded=${isOpen} onClick=${() => onToggle(w.id)}>
+              ${row}<${Icon} name="down" size=${18} class=${`muted ${isOpen ? 'flip' : ''}`} />
+            </button>
+            ${isOpen && html`<${WagonDefects} w=${w} />`}
+          </li>`;
+      })}
     </ul>`;
 }
 
+// Rozbalený vůz v seznamu skupiny: jeho otevřené závady (stejné karty jako na obrazovce vozu) a odkazy dál.
+// Rozbalením jsou závady prohlédnuté stejně jako otevřením vozu.
+function WagonDefects({ w }) {
+  const { api, me } = useApp();
+  const defects = useLoad(() => api.listDefects(w.id), [w.id], `defects:${w.id}`);
+  const seenBefore = useWagonSeen(w.id);
+  const open = (defects.data ?? []).filter((d) => !d.resolved_at)
+    .sort((a, b) => Date.parse(foundAtOf(b)) - Date.parse(foundAtOf(a)));
+  return html`
+    <div class="wagon-panel">
+      <${ErrorBox} error=${defects.error} />
+      ${!defects.data && defects.loading && html`<${Loading} />`}
+      ${defects.data && !open.length && html`<${Empty}><${Icon} name="check" /> Na voze nejsou žádné aktivní závady.<//>`}
+      ${open.map((d) => html`<${DefectCard} key=${d.id} d=${d} wagon=${w} isNew=${isNewDefect(d, seenBefore, me)} />`)}
+      <div class="panel-links">
+        <a class="btn" href="#/nova?vuz=${w.id}"><${Icon} name="plus" size=${18} /> Přidat závadu</a>
+        <a class="btn" href="#/vuz/${w.id}">Otevřít vůz <${Icon} name="right" size=${18} /></a>
+      </div>
+    </div>`;
+}
+
 export function GroupView({ id }) {
-  const { api } = useApp();
-  const groups = useLoad(() => api.listGroups(), [], 'groups');
-  const wagons = useLoad(() => api.listWagons(id), [id], `wagons:${id}`);
+  const { api, seenWagons } = useApp();
+  // Po rozbalení vozu (závady prohlédnuté) se odznaky „nové“ načtou znovu
+  const groups = useLoad(() => api.listGroups(), [seenWagons], 'groups');
+  const wagons = useLoad(() => api.listWagons(id), [id, seenWagons], `wagons:${id}`);
   const [q, setQ] = useState('');
-  const [showAll, setShowAll] = useState(false);
+  const [showAll, setShowAll] = useScreenState('showAll', false);
+  const [opened, setOpened] = useScreenState('opened', []); // rozbalené vozy (id)
+  const toggle = (wid) => setOpened(opened.includes(wid) ? opened.filter((x) => x !== wid) : [...opened, wid]);
   const g = groups.data?.find((x) => x.id === id);
   // Vozy s nejnovější závadou nahoře (čas zápisu poslední závady vozu); stejný čas – pořadí ze serveru
   const lastAt = (w) => (w.last_defect_at ? Date.parse(w.last_defect_at) : 0);
@@ -95,7 +132,7 @@ export function GroupView({ id }) {
         ${wagons.data && html`
           <h2 class="section-title">Vozy s otevřenými závadami (${withDefects.length})</h2>
           ${withDefects.length
-            ? html`<${WagonList} wagons=${withDefects} showLast />`
+            ? html`<${WagonList} wagons=${withDefects} showLast opened=${opened} onToggle=${toggle} />`
             : html`<${Empty}>V této skupině nejsou žádné otevřené závady.<//>`}
           ${others.length > 0 && html`
             <button class="btn btn-ghost block toggle" onClick=${() => setShowAll(!showAll)} aria-expanded=${showAll}>

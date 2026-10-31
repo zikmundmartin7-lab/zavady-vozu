@@ -1,33 +1,24 @@
 // Detail vozu: aktivní závady, skrytá historie oprav, správa vozu pro administrátora.
 // Obrazovka vozu po uložení závady je ve videonávodu (video/zadani-zavady-android.mp4) – vzhled, pořadí a texty neměnit bez souhlasu uživatele (README → návod, videonávody).
 
-import { html, useEffect, useRef, useState } from '../../vendor/preact-htm.js';
+import { html } from '../../vendor/preact-htm.js';
 import { can, checkDigit, formatNumber, foundAtOf, groupLabel, isValidCheckDigit, plural } from '../model.js';
 import {
-  BottomNav, DefectCard, Empty, ErrorBox, Icon, Loading, TopBar, WagonNumber, goBack, useApp, useLoad,
+  BottomNav, DefectCard, Empty, ErrorBox, Icon, Loading, TopBar, WagonNumber, backTarget, goBack, isNewDefect, useApp, useLoad,
+  useScreenState, useWagonSeen,
 } from '../ui.js';
 
 export function WagonView({ id }) {
-  const { api, me, refresh, toast, version, wagonSeen } = useApp();
+  const { api, me, refresh, toast } = useApp();
   const wagon = useLoad(() => api.getWagon(id), [id], `wagon:${id}`);
   const defects = useLoad(() => api.listDefects(id), [id], `defects:${id}`);
   const groups = useLoad(() => api.listGroups(), [], 'groups');
-  const [showHistory, setShowHistory] = useState(false);
+  const [showHistory, setShowHistory] = useScreenState('history', false);
   const w = wagon.data;
 
-  // Otevřením vozu jsou jeho závady prohlédnuté. Štítek „Nová“ dostanou ty vložené od minulé návštěvy;
-  // při živé změně (nová závada, zatímco je vůz otevřený) se vůz označí jako prohlédnutý znovu.
-  // wagonSeen: odznak u záložky Přehled se přepočítá a v přehledu přestanou být závady vozu tučně.
-  const [seenBefore, setSeenBefore] = useState(null);
-  const firstVisit = useRef(true);
-  useEffect(() => {
-    api.markWagonSeen(id).then((prev) => {
-      wagonSeen(id);
-      if (firstVisit.current) { firstVisit.current = false; setSeenBefore(prev); }
-    }, () => {});
-  }, [id, version]);
-  const isNew = (d) => !!seenBefore && !d.resolved_at && d.created_by !== me.id
-    && Date.parse(d.created_at) > Date.parse(seenBefore);
+  // Otevřením vozu jsou jeho závady prohlédnuté, štítek „Nová“ mají ty vložené od minulé návštěvy
+  const seenBefore = useWagonSeen(id);
+  const isNew = (d) => isNewDefect(d, seenBefore, me);
 
   if (wagon.error) return html`<${TopBar} back="#/" title="Vůz" /><main class="page"><${ErrorBox} error=${wagon.error} /></main>`;
   if (!w) {
@@ -59,7 +50,7 @@ export function WagonView({ id }) {
   }
 
   return html`
-    <${TopBar} back="#/skupina/${w.group_id}" title=${formatNumber(w.number)} sub=${w.group_name} />
+    <${TopBar} back=${backTarget(`#/skupina/${w.group_id}`)} title=${formatNumber(w.number)} sub=${w.group_name} />
     <main class="page with-nav">
       <section class="card wagon-card">
         <${WagonNumber} number=${w.number} class="big" />

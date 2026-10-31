@@ -243,6 +243,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .wagon-col .last-defect { color: var(--muted); font-size: .8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 a.list-row:hover { background: var(--primary-soft); }
 a.card.list-row { padding: 16px; }
+/* Vůz rozbalený přímo v seznamu skupiny: jeho závady na šedém podkladu pod řádkem */
+.list li.open > .list-row { background: var(--primary-soft); }
+.wagon-panel { background: var(--bg); padding: 10px 8px 4px; border-top: 1px solid var(--border); }
+.panel-links { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.panel-links .btn { flex: 1; justify-content: center; }
 
 /* ───── Vůz a závady ───── */
 
@@ -534,6 +539,12 @@ button.code-item:hover { border-color: var(--primary); }
 /* Nepřečtená závada (nová od ostatních, vůz ještě neotevřený): tučně, po otevření vozu jako ostatní */
 .overview-row.unread { font-weight: 700; }
 .unread-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--badge); flex: none; }
+/* Řádek se rozbalí na celou kartu závady (barevný proužek vlevo už má řádek) */
+.overview-toggle { display: block; width: 100%; padding: 0; border: 0; background: none; text-align: left; color: inherit; cursor: pointer; }
+.overview-row.open { font-weight: 400; }
+.overview-detail .defect { box-shadow: none; background: none; padding: 8px 0 0; margin: 0; }
+.overview-detail .defect::before { display: none; }
+.overview-detail .open-wagon { width: 100%; justify-content: flex-end; padding-right: 0; }
 
 /* ───── Zápis bez signálu ───── */
 

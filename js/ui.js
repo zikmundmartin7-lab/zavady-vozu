@@ -17,11 +17,27 @@ const NAV_KEY = 'zavady-nav';
 let navStack = [];
 try { navStack = JSON.parse(sessionStorage.getItem(NAV_KEY)) ?? []; } catch { /* nevadí */ }
 let navIdx = history.state?.navIdx ?? -1;
-function trackNav() {
+
+// Stav obrazovky v jednom kroku historie (posun stránky, rozbalené řádky): po návratu Zpět se obnoví,
+// nově otevřená obrazovka začíná od začátku. Platí v této relaci (sessionStorage), klíčem je pořadí kroku.
+const SCREEN_KEY = 'zavady-nav-stav';
+let screens = {};
+try { screens = JSON.parse(sessionStorage.getItem(SCREEN_KEY)) ?? {}; } catch { /* nevadí */ }
+history.scrollRestoration = 'manual'; // posun obnovuje aplikace (restoreScroll), prohlížeč by skákal jinam
+const screenOf = (idx) => (screens[idx]?.hash === navStack[idx] ? screens[idx] : null);
+function rememberScreen(idx, patch) {
+  if (idx < 0 || !navStack[idx]) return;
+  screens[idx] = { ...screenOf(idx), ...patch, hash: navStack[idx] };
+  try { sessionStorage.setItem(SCREEN_KEY, JSON.stringify(screens)); } catch { /* nevadí */ }
+}
+
+function trackNav(leaving = false) {
+  if (leaving) rememberScreen(navIdx, { scroll: scrollY }); // opouštěná obrazovka: kam byla posunutá
   let idx = history.state?.navIdx;
   if (idx === undefined) { // nový záznam (odkaz, go)
     idx = navIdx + 1;
     navStack = navStack.slice(0, idx);
+    for (const k of Object.keys(screens)) if (Number(k) >= idx) delete screens[k];
     history.replaceState({ ...history.state, navIdx: idx }, '');
   }
   navStack[idx] = location.hash || '#/';
@@ -29,7 +45,39 @@ function trackNav() {
   try { sessionStorage.setItem(NAV_KEY, JSON.stringify(navStack)); } catch { /* nevadí */ }
 }
 trackNav();
-addEventListener('hashchange', trackNav);
+addEventListener('hashchange', () => trackNav(true));
+
+/** Po přechodu na obrazovku: při návratu Zpět tam, kde byla posunutá, jinak nahoru. */
+export function restoreScroll() {
+  const y = screenOf(navIdx)?.scroll ?? 0;
+  if (!y) { scrollTo(0, 0); return; }
+  // Obsah se vykreslí až po změně stavu (a seznam z paměti hned potom) – pár pokusů, než je stránka dost dlouhá
+  let tries = 0;
+  const step = () => {
+    scrollTo(0, y);
+    if (Math.abs(scrollY - y) > 2 && ++tries < 12) setTimeout(step, 50);
+  };
+  requestAnimationFrame(step);
+}
+
+/** Zapomenout stav aktuální obrazovky (klepnutí na záložku, na které uživatel už je = začít znovu). */
+export function forgetScreen() {
+  delete screens[navIdx];
+  try { sessionStorage.setItem(SCREEN_KEY, JSON.stringify(screens)); } catch { /* nevadí */ }
+}
+
+/** useState, který se obnoví po návratu Zpět na tuto obrazovku (rozbalené řádky, otevřené části). */
+export function useScreenState(name, initial) {
+  const [value, setValue] = useState(() => screenOf(navIdx)?.[name] ?? initial);
+  const set = (v) => { setValue(v); rememberScreen(navIdx, { [name]: v }); };
+  return [value, set];
+}
+
+/** Kam vede šipka Zpět: do Přehledu, když uživatel přišel z něj (přání uživatele 31. 10.), jinak fallback. */
+export function backTarget(fallback) {
+  const prev = navIdx > 0 ? navStack[navIdx - 1] : null;
+  return prev?.startsWith('#/prehled') ? prev : fallback;
+}
 
 export const go = (hash) => { location.hash = hash; };
 // Nahradit obrazovku bez nového záznamu v historii (pořadí záznamu zůstane, viz trackNav)
@@ -136,6 +184,28 @@ export function useLoad(fn, deps, cacheKey) {
   }, [...deps, version]);
   return state;
 }
+
+/**
+ * Otevřením vozu (i rozbalením v seznamu) jsou jeho závady prohlédnuté. Vrací, kdy je uživatel viděl předtím –
+ * štítek „Nová“ dostanou závady vložené od té doby (isNewDefect). Při živé změně (nová závada, zatímco je vůz
+ * otevřený) se vůz označí jako prohlédnutý znovu. wagonSeen: odznak u záložky Přehled se přepočítá
+ * a v přehledu přestanou být závady vozu tučně.
+ */
+export function useWagonSeen(id) {
+  const { api, version, wagonSeen } = useApp();
+  const [seenBefore, setSeenBefore] = useState(null);
+  const firstVisit = useRef(true);
+  useEffect(() => {
+    api.markWagonSeen(id).then((prev) => {
+      wagonSeen(id);
+      if (firstVisit.current) { firstVisit.current = false; setSeenBefore(prev); }
+    }, () => {});
+  }, [id, version]);
+  return seenBefore;
+}
+
+export const isNewDefect = (d, seenBefore, me) => !!seenBefore && !d.resolved_at && d.created_by !== me.id
+  && Date.parse(d.created_at) > Date.parse(seenBefore);
 
 // ───── Ikony ─────
 

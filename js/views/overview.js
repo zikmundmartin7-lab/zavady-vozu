@@ -1,15 +1,22 @@
 // Přehled závad napříč všemi vozy: filtry (stav, skupina, hledání, období, řazení) a export do Excelu.
 
-import { html, useMemo, useState } from '../../vendor/preact-htm.js';
+import { html, useEffect, useMemo, useState } from '../../vendor/preact-htm.js';
 import { fold } from '../codes.js';
 import { foundAtOf, formatDateTime, formatNumber, groupLabel, plural } from '../model.js';
 import {
-  BottomNav, Empty, ErrorBox, GroupName, Icon, Loading, OutboxBanner, TopBar, UserButton, WagonNumber, useApp, useCatalog,
-  useLoad,
+  BottomNav, DefectCard, Empty, ErrorBox, GroupName, Icon, Loading, OutboxBanner, TopBar, UserButton, WagonNumber, isNewDefect,
+  useApp, useCatalog, useLoad, useScreenState, useWagonSeen,
 } from '../ui.js';
 
 const STATUS = { open: 'Neopravené', resolved: 'Opravené', all: 'Všechny' };
 const PAGE = 150;
+
+// Filtry platí, dokud je aplikace otevřená – i po návratu ze závady a přepnutí záložek (přání uživatele 31. 10.)
+const FILTERS_KEY = 'zavady-prehled';
+const FILTERS = { status: 'open', groupIds: [], q: '', from: '', to: '', sort: 'new', more: false };
+function savedFilters() {
+  try { return { ...FILTERS, ...JSON.parse(sessionStorage.getItem(FILTERS_KEY)) }; } catch { return FILTERS; }
+}
 
 /**
  * Export seznamu závad do Excelu (stejné sloupce jako pravidelný export ze serveru).
@@ -49,17 +56,22 @@ export async function exportDefects(rows, catalog, label, groups = [], chosen = 
 export function OverviewView() {
   const { api, toast, seenWagons } = useApp();
   const catalog = useCatalog();
-  const [status, setStatus] = useState('open');
+  const [saved] = useState(savedFilters);
+  const [status, setStatus] = useState(saved.status);
   const data = useLoad(() => api.listOverview(status), [status], `overview:${status}`);
   const groups = useLoad(() => api.listGroups(), [], 'groups');
-  const [groupIds, setGroupIds] = useState([]); // prázdné = všechny skupiny
-  const [q, setQ] = useState('');
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
-  const [sort, setSort] = useState('new');
-  const [more, setMore] = useState(false);
-  const [limit, setLimit] = useState(PAGE);
+  const [groupIds, setGroupIds] = useState(saved.groupIds); // prázdné = všechny skupiny
+  const [q, setQ] = useState(saved.q);
+  const [from, setFrom] = useState(saved.from);
+  const [to, setTo] = useState(saved.to);
+  const [sort, setSort] = useState(saved.sort);
+  const [more, setMore] = useState(saved.more);
+  const [limit, setLimit] = useScreenState('limit', PAGE);
+  const [opened, setOpened] = useScreenState('opened', []); // rozbalené závady (id)
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    try { sessionStorage.setItem(FILTERS_KEY, JSON.stringify({ status, groupIds, q, from, to, sort, more })); } catch { /* nevadí */ }
+  }, [status, groupIds, q, from, to, sort, more]);
 
   const rows = useMemo(() => {
     const list = data.data ?? [];
@@ -105,6 +117,7 @@ export function OverviewView() {
   const unread = (r) => r.is_new && !(seenWagons.get(r.wagon_id) > Date.parse(r.created_at));
   const filtersActive = groupIds.length || q || from || to;
   const toggleGroup = (id) => setGroupIds(groupIds.includes(id) ? groupIds.filter((x) => x !== id) : [...groupIds, id]);
+  const toggleRow = (id) => setOpened(opened.includes(id) ? opened.filter((x) => x !== id) : [...opened, id]);
 
   return html`
     <${TopBar} title="Přehled závad" sub="Všechny vozy"><${UserButton} /><//>
@@ -150,27 +163,54 @@ export function OverviewView() {
       ${!data.data && data.loading && html`<${Loading} />`}
       ${data.data && rows.length === 0 && html`<${Empty}>Žádné závady neodpovídají filtru.<//>`}
       <div class="overview-list">
-        ${rows.slice(0, limit).map((r) => html`
-          <a key=${r.id} class="overview-row ${r.resolved_at ? 'resolved' : ''} ${unread(r) ? 'unread' : ''}" href="#/vuz/${r.wagon_id}">
-            <div class="overview-head">
-              ${unread(r) && html`<span class="unread-dot" title="Nová závada – vůz jste od jejího zapsání neotevřeli"></span>`}
-              <${WagonNumber} number=${r.number} />
-              <span class="muted small">${r.group_name}</span>
-              <span class="spacer"></span>
-              ${r.defect_code && html`<span class="chip chip-code">kód ${r.defect_code}</span>`}
-              ${r.resolved_at && html`<span class="chip chip-ok">Opraveno</span>`}
-            </div>
-            <div class="overview-text">${r.description}</div>
-            <div class="muted small">
-              zjištěno ${formatDateTime(foundAtOf(r))} · ${r.created_by_name || 'neznámý'}
-              ${r.comment_count ? ` · ${plural(r.comment_count, 'komentář', 'komentáře', 'komentářů')}` : ''}
-              ${r.attachment_count ? ` · ${r.attachment_count} 📎` : ''}
-              ${r.resolved_at ? ` · opraveno ${formatDateTime(r.resolved_at)}` : ''}
-            </div>
-          </a>`)}
+        ${rows.slice(0, limit).map((r) => {
+          // Klepnutím se závada rozbalí přímo v seznamu (přání uživatele 31. 10. – jako pohyby v internetovém
+          // bankovnictví), ostatní zůstanou vidět; dalším klepnutím na hlavičku se zase zabalí.
+          const isOpen = opened.includes(r.id);
+          return html`
+          <div key=${r.id} class="overview-row ${r.resolved_at ? 'resolved' : ''} ${unread(r) ? 'unread' : ''} ${isOpen ? 'open' : ''}">
+            <button type="button" class="overview-toggle" aria-expanded=${isOpen} onClick=${() => toggleRow(r.id)}>
+              <div class="overview-head">
+                ${unread(r) && html`<span class="unread-dot" title="Nová závada – vůz jste od jejího zapsání neotevřeli"></span>`}
+                <${WagonNumber} number=${r.number} />
+                <span class="muted small">${r.group_name}</span>
+                <span class="spacer"></span>
+                ${!isOpen && r.defect_code && html`<span class="chip chip-code">kód ${r.defect_code}</span>`}
+                ${!isOpen && r.resolved_at && html`<span class="chip chip-ok">Opraveno</span>`}
+                <${Icon} name="down" size=${18} class=${`muted ${isOpen ? 'flip' : ''}`} />
+              </div>
+              ${!isOpen && html`
+                <div class="overview-text">${r.description}</div>
+                <div class="muted small">
+                  zjištěno ${formatDateTime(foundAtOf(r))} · ${r.created_by_name || 'neznámý'}
+                  ${r.comment_count ? ` · ${plural(r.comment_count, 'komentář', 'komentáře', 'komentářů')}` : ''}
+                  ${r.attachment_count ? ` · ${r.attachment_count} 📎` : ''}
+                  ${r.resolved_at ? ` · opraveno ${formatDateTime(r.resolved_at)}` : ''}
+                </div>`}
+            </button>
+            ${isOpen && html`<${OverviewDefect} r=${r} />`}
+          </div>`;
+        })}
       </div>
       ${rows.length > limit && html`
         <button class="btn btn-ghost block toggle" onClick=${() => setLimit(limit + PAGE)}>Zobrazit další (${rows.length - limit})</button>`}
     </main>
     <${BottomNav} active="prehled" />`;
+}
+
+// Rozbalená závada v Přehledu: celá karta jako na obrazovce vozu (fotky, komentáře, WhatsApp, oprava) a odkaz na vůz.
+// Bere se ze závad vozu (stejná zásoba jako obrazovka vozu – funguje i bez signálu); rozbalením je vůz prohlédnutý.
+function OverviewDefect({ r }) {
+  const { api, me } = useApp();
+  const defects = useLoad(() => api.listDefects(r.wagon_id), [r.wagon_id], `defects:${r.wagon_id}`);
+  const seenBefore = useWagonSeen(r.wagon_id);
+  const d = defects.data?.find((x) => x.id === r.id);
+  return html`
+    <div class="overview-detail">
+      <${ErrorBox} error=${defects.error} />
+      ${d
+        ? html`<${DefectCard} d=${d} wagon=${{ id: r.wagon_id, number: r.number }} isNew=${isNewDefect(d, seenBefore, me)} />`
+        : defects.loading ? html`<${Loading} />` : html`<${Empty}>Závada nebyla nalezena (možná byla smazána).<//>`}
+      <a class="btn btn-ghost open-wagon" href="#/vuz/${r.wagon_id}">Otevřít vůz ${formatNumber(r.number)} <${Icon} name="right" size=${18} /></a>
+    </div>`;
 }
