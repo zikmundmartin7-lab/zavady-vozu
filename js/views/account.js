@@ -6,7 +6,7 @@ import { APP_VERSION } from '../version.js';
 import { ocrReady, prefetchOcr } from '../offline.js';
 import { browserVersion, installCzech, offlineDictation } from '../dictation.js';
 import {
-  Empty, ErrorBox, Icon, InstallOffer, Loading, PasswordInput, TopBar, enablePush, isAndroid, isIos, isStandalone, setPushOff,
+  DefectVideoLink, Empty, ErrorBox, Icon, InstallOffer, Loading, PasswordInput, TopBar, enablePush, isAndroid, isIos, isStandalone, setPushOff,
   swVersion, updateApp, useApp, useLoad,
 } from '../ui.js';
 
@@ -273,6 +273,12 @@ export function AccountView() {
                 ? 'Upozornění zatím nejsou nastavená (chybí VAPID klíč) nebo je tento prohlížeč nepodporuje.'
                 : 'Tento prohlížeč upozornění nepodporuje.'}</p>`}
       </section>
+
+      ${isAndroid() && html`
+        <section class="card">
+          <h2><${Icon} name="video" /> Návod</h2>
+          <${DefectVideoLink} />
+        </section>`}
 
       ${installPrompt && html`
         <section class="card">

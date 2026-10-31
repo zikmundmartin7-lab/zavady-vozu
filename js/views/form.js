@@ -7,7 +7,7 @@ import {
   groupLabel, isValidCheckDigit, plural, toLocalInput,
 } from '../model.js';
 import {
-  CameraSteps, Empty, ErrorBox, GroupName, Icon, Loading, TopBar, WagonNumber, goBack, praise,
+  CameraSteps, DefectVideoLink, Empty, ErrorBox, GroupName, Icon, Loading, TopBar, WagonNumber, goBack, praise,
   requestCamera, useApp, useCameraPermission, useLoad,
 } from '../ui.js';
 import { CodePicker } from './codes.js';
@@ -292,6 +292,7 @@ export function DefectFormView({ editId, params }) {
           <span>Pokračujete v rozepsané závadě z ${formatDateTime(restoredAt)}.</span>
           <button type="button" class="link-btn" onClick=${discardDraft}>Zahodit</button>
         </div>`}
+      ${!editId && html`<${DefectVideoLink} />`}
       <form class="form" onSubmit=${submit}>
         <section class="card">
           <h2 class="field-label">Vůz</h2>

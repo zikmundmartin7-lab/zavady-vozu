@@ -1,7 +1,7 @@
 // Úvodní obrazovka (skupiny vozů + hledání) a obrazovka jedné skupiny.
 
 import { html, useState } from '../../vendor/preact-htm.js';
-import { plural } from '../model.js';
+import { formatDay, plural } from '../model.js';
 import {
   Badge, BottomNav, CameraOffer, CommentsFab, Empty, ErrorBox, Fab, GroupName, Icon, InstallOffer, Loading, NewBadge, OpenCount, OutboxBanner, PushOffer, TopBar,
   UserButton, WagonNumber, WagonSearch, useApp, useLoad,
@@ -41,13 +41,25 @@ export function HomeView() {
     <${BottomNav} active="vozy" />`;
 }
 
-function WagonList({ wagons }) {
+// Kdy byla zapsaná nejnovější závada vozu: dnes / včera / 28. 10. (rok jen u starších než letošních)
+function lastDefectDay(iso) {
+  const day = formatDay(iso);
+  if (day === 'Dnes' || day === 'Včera') return day.toLowerCase();
+  const d = new Date(iso);
+  return d.getFullYear() === new Date().getFullYear() ? `${d.getDate()}. ${d.getMonth() + 1}.` : day;
+}
+
+// showLast: pod číslem vozu, kdy byla zapsaná jeho nejnovější závada (podle toho je seznam seřazený)
+function WagonList({ wagons, showLast = false }) {
   return html`
     <ul class="list">
       ${wagons.map((w) => html`
         <li key=${w.id}>
           <a class="list-row" href="#/vuz/${w.id}">
-            <${WagonNumber} number=${w.number} />
+            ${showLast && w.last_defect_at
+              ? html`<span class="wagon-col"><${WagonNumber} number=${w.number} />
+                  <span class="last-defect">Nejnovější závada ${lastDefectDay(w.last_defect_at)}</span></span>`
+              : html`<${WagonNumber} number=${w.number} />`}
             <${OpenCount} w=${w} />
             <${Icon} name="right" size=${18} class="muted" />
           </a>
@@ -62,9 +74,9 @@ export function GroupView({ id }) {
   const [q, setQ] = useState('');
   const [showAll, setShowAll] = useState(false);
   const g = groups.data?.find((x) => x.id === id);
-  // Vozy s novými závadami nahoře, jinak pořadí ze serveru (podle počtu otevřených závad)
-  const withDefects = wagons.data?.filter((w) => w.open_count > 0)
-    .sort((a, b) => (b.new_count > 0) - (a.new_count > 0)) ?? [];
+  // Vozy s nejnovější závadou nahoře (čas zápisu poslední závady vozu); stejný čas – pořadí ze serveru
+  const lastAt = (w) => (w.last_defect_at ? Date.parse(w.last_defect_at) : 0);
+  const withDefects = wagons.data?.filter((w) => w.open_count > 0).sort((a, b) => lastAt(b) - lastAt(a)) ?? [];
   const others = wagons.data?.filter((w) => !w.open_count) ?? [];
 
   return html`
@@ -82,7 +94,7 @@ export function GroupView({ id }) {
         ${wagons.data && html`
           <h2 class="section-title">Vozy s otevřenými závadami (${withDefects.length})</h2>
           ${withDefects.length
-            ? html`<${WagonList} wagons=${withDefects} />`
+            ? html`<${WagonList} wagons=${withDefects} showLast />`
             : html`<${Empty}>V této skupině nejsou žádné otevřené závady.<//>`}
           ${others.length > 0 && html`
             <button class="btn btn-ghost block toggle" onClick=${() => setShowAll(!showAll)} aria-expanded=${showAll}>

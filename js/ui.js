@@ -945,6 +945,21 @@ export function Lightbox({ items, index, download, onClose }) {
     </div>`;
 }
 
+// Videonávod k zápisu závady – natočený v Androidu (klávesnice, výběr data a galerie vypadají na iPhonu jinak),
+// proto jen v Androidu. Totéž video je v navod.html. Ze sítě, service worker videa neukládá.
+const DEFECT_VIDEO = 'video/zadani-zavady-android.mp4?v=1';
+
+/** Odkaz „Videonávod: jak zadat závadu“ – video přes celou obrazovku, Zpět ho zavře a formulář zůstane. */
+export function DefectVideoLink() {
+  const [open, setOpen] = useState(false);
+  if (!isAndroid()) return null;
+  return html`
+    <button type="button" class="link-btn video-link" onClick=${() => setOpen(true)}>
+      <${Icon} name="play" size=${16} /> Videonávod: jak zadat závadu (2 min)</button>
+    ${open && html`<${Lightbox} items=${[{ id: 'navod', kind: 'video', url: DEFECT_VIDEO }]} index=${0}
+      onClose=${() => setOpen(false)} />`}`;
+}
+
 export function Toasts({ items, dismiss }) {
   return html`
     <div class="toasts" role="status" aria-live="polite">

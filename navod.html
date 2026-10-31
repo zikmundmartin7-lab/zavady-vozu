@@ -160,13 +160,14 @@
     <section class="card video-card" data-os="android">
       <h2>Videonávod – Android</h2>
       <p class="muted small">Celý postup za 45 sekund: od odkazu ve WhatsAppu přes instalaci a registraci po zapnutí upozornění. Video je bez zvuku.</p>
+      <p class="small"><a href="#zadani-zavady">Jak zadat závadu – druhé video níže</a></p>
       <div class="video-wrap">
-        <video id="video-navod" controls playsinline preload="none" poster="video/navod-android.jpg?v=1" width="478" height="850">
+        <video controls playsinline preload="none" poster="video/navod-android.jpg?v=1" width="478" height="850">
           <source src="video/navod-android.mp4?v=1" type="video/mp4" />
           Video se nedá přehrát – postup je popsaný v krocích níže.
         </video>
         <!-- Náhled vypadá jako tato stránka – výrazné tlačítko, ať je jasné, že jde o video -->
-        <button type="button" class="play-overlay" id="video-play" aria-label="Přehrát videonávod">
+        <button type="button" class="play-overlay" aria-label="Přehrát videonávod">
           <span class="play-btn"><svg width="34" height="34" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor"/></svg></span>
           <span class="play-label">Přehrát video (45 s)</span>
         </button>
@@ -295,6 +296,23 @@
         </div>
       </li>
     </ol>
+
+    <!-- ───── Android: videonávod k zápisu závady (natočený v Androidu – na iPhonu vypadá klávesnice, datum a galerie jinak) ───── -->
+    <section class="card video-card" data-os="android" id="zadani-zavady">
+      <h2>Videonávod – jak zadat závadu</h2>
+      <p class="muted small">Celý zápis za 2 minuty: <b>Nová závada</b> → číslo vozu → kód závady (podle čísla, části vozu
+        nebo z katalogu) → popis → datum zjištění → fotky z galerie → <b>Uložit závadu</b> → poslání do WhatsAppu.</p>
+      <div class="video-wrap">
+        <video controls playsinline preload="none" poster="video/zadani-zavady-android.jpg?v=1" width="478" height="850">
+          <source src="video/zadani-zavady-android.mp4?v=1" type="video/mp4" />
+          Video se nedá přehrát.
+        </video>
+        <button type="button" class="play-overlay" aria-label="Přehrát videonávod k zápisu závady">
+          <span class="play-btn"><svg width="34" height="34" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor"/></svg></span>
+          <span class="play-label">Přehrát video (2 min)</span>
+        </button>
+      </div>
+    </section>
 
     <section class="card">
       <h2>Když něco nejde</h2>
@@ -452,12 +470,19 @@
       }
     });
 
-    // Videonávod: tlačítko přes náhled spustí video; při přehrávání zmizí, po skončení se vrátí
-    const video = document.getElementById('video-navod');
-    const playBtn = document.getElementById('video-play');
-    playBtn.addEventListener('click', () => { video.play().catch(() => { playBtn.hidden = true; }); });
-    video.addEventListener('play', () => { playBtn.hidden = true; });
-    video.addEventListener('ended', () => { playBtn.hidden = false; });
+    // Videonávody: tlačítko přes náhled spustí video; při přehrávání zmizí, po skončení se vrátí.
+    // Spuštěné video zastaví ostatní.
+    const videos = [...document.querySelectorAll('.video-wrap video')];
+    document.querySelectorAll('.video-wrap').forEach((wrap) => {
+      const video = wrap.querySelector('video');
+      const playBtn = wrap.querySelector('.play-overlay');
+      playBtn.addEventListener('click', () => { video.play().catch(() => { playBtn.hidden = true; }); });
+      video.addEventListener('play', () => {
+        playBtn.hidden = true;
+        videos.forEach((v) => { if (v !== video) v.pause(); });
+      });
+      video.addEventListener('ended', () => { playBtn.hidden = false; });
+    });
 
     // Android: Chrome nabídne instalaci přímo z této stránky (tlačítko nahoře i v kroku 2)
     let installEvent = null;
