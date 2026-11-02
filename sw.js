@@ -1,6 +1,6 @@
 // Service worker: rychlé spuštění z paměti telefonu, offline záloha a push upozornění na nové závady.
 
-const CACHE = 'zavady-v64'; // zvýšit spolu s APP_VERSION v js/version.js
+const CACHE = 'zavady-v65'; // zvýšit spolu s APP_VERSION v js/version.js
 const PHOTO_CACHE = 'zavady-foto'; // fotky závad a obrázky katalogu (přežije novou verzi aplikace)
 const SHARED_CACHE = 'zavady-sdilene'; // fotky sdílené do aplikace z galerie, než si je vyzvedne formulář (js/draft.js)
 // Skener čísla vozu: neuronové sítě a ONNX runtime (asi 25 MB). V terénu nemusí být signál, proto se stáhnou
@@ -218,16 +218,17 @@ async function remindOutbox() {
   });
 }
 
-// Android (Chrome): po návratu signálu Chrome probudí service worker i u zamčeného telefonu
+// Android (Chrome): po návratu signálu Chrome probudí service worker i u zamčeného telefonu. Vzhůru ale prohlížeč
+// drží jen do spuštění události, ne do jejího konce – Android ho pak během pár sekund uspí a čekající kód
+// doběhne až po otevření aplikace. Proto nic nečekat: hned spočítat frontu a ukázat oznámení.
 self.addEventListener('sync', (e) => {
   if (e.tag !== OUTBOX_TAG) return;
   e.waitUntil((async () => {
-    await new Promise((r) => setTimeout(r, 20000)); // otevřená aplikace odešle sama – dát jí čas
     if (!(await outboxCount())) return;
-    // Chrome hlásí signál i tam, kde data neprojdou: ověřit. Chyba → Chrome událost zopakuje později.
-    await fetch(new URL('js/version.js', self.registration.scope), { cache: 'no-store' });
     const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
-    if (wins.some((w) => w.visibilityState === 'visible')) return;
+    if (wins.some((w) => w.visibilityState === 'visible')) return; // otevřená aplikace odešle sama
+    // Chrome hlásí signál i tam, kde data neprojdou: krátce ověřit. Chyba → Chrome událost zopakuje (za 5 a 15 minut).
+    await fetch(new URL('js/version.js', self.registration.scope), { cache: 'no-store', signal: AbortSignal.timeout(5000) });
     await remindOutbox().catch(() => {}); // upozornění nepovolená – nic
   })());
 });
