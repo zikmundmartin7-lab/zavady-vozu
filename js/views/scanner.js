@@ -168,12 +168,15 @@ export function Scanner({ onDone, onClose }) {
       const c = grab(bmp, { x: 0, y: 0, w: bmp.width, h: bmp.height }, document.createElement('canvas'), PHOTO_SIDE);
       const lines = await readText(c, { maxSide: 1600 });
       const cands = numberCandidates(lines).filter((x) => x.valid);
-      if (cands[0]?.sure || cands.length === 1) setFound({ number: cands[0].number, shot: shot(c, lines, cands[0].lines) });
+      // Samo se přijme jen „jisté“ číslo jako u kamery. Jediné číslo s platnou kontrolní číslicí bývá náhoda
+      // (složené z údajů tabulek: 429.0, 1500 kg, 11.19 m …), proto se jen nabídne.
+      const sure = cands.find((x) => x.sure);
+      if (sure) setFound({ number: sure.number, shot: shot(c, lines, sure.lines) });
       else {
         offer(cands.slice(0, 3).map((x) => ({ number: x.number, shot: shot(c, lines, x.lines) })));
-        setError(cands.length
-          ? 'Na fotce je víc možných čísel – ťukněte na správné.'
-          : 'Číslo se z fotky nepodařilo přečíst. Vyfoťte ho zblízka, nebo ho zadejte ručně.');
+        setError(cands.length > 1 ? 'Na fotce je víc možných čísel – ťukněte na správné.'
+          : cands.length ? 'Číslo se nepodařilo přečíst jistě – když souhlasí, ťukněte na něj.'
+            : 'Číslo se z fotky nepodařilo přečíst. Vyfoťte ho zblízka, nebo ho zadejte ručně.');
       }
     } catch (e) {
       setError(`Fotku se nepodařilo přečíst: ${e.message}`);
