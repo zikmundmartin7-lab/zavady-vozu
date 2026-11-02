@@ -10,7 +10,7 @@ import {
 import { lastPrefetchAt, prefetchAll, prefetchOcr } from './offline.js';
 import { AccountView, LoginView, PendingView, RecoveryView, UsersView } from './views/account.js';
 import { CommentInboxView, DefectView } from './views/defect.js';
-import { syncOutbox } from './outbox.js';
+import { remindIfPending, syncOutbox } from './outbox.js';
 import { AuditView, ExportsView, TrashView } from './views/admin.js';
 import { CodesView } from './views/codes.js';
 import { OverviewView } from './views/overview.js';
@@ -221,7 +221,8 @@ function App() {
     const fetchAllData = () => navigator.onLine && prefetch();
     const onOnline = () => { send(); fetchAllData(); };
     const onVisible = () => {
-      if (document.visibilityState !== 'visible') return;
+      // odchod z aplikace s neodeslanými závadami: Android je po návratu signálu připomene oznámením
+      if (document.visibilityState !== 'visible') { remindIfPending().catch(() => {}); return; }
       send();
       if (Date.now() - lastPrefetchAt() > 15 * 60000) fetchAllData();
     };

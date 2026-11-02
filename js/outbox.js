@@ -1,5 +1,7 @@
 // Zápis bez signálu: závady, které se nepodařilo odeslat, čekají v telefonu (IndexedDB)
-// a odešlou se samy, až bude připojení. Fotky a videa se ukládají s nimi.
+// a odešlou se samy, až bude připojení a aplikace bude otevřená. Fotky a videa se ukládají s nimi.
+// Se zavřenou aplikací se nic neodešle (přihlášení je jen v ní) – po návratu signálu je jen připomene
+// oznámení ze service workeru (remindWhenOnline, sw.js).
 // Uložený záznam s fotkami se už nikdy nepřepisuje: Safari v iPhonu po zápisu Blobu přečteného z IndexedDB
 // zpět do databáze fotku ztratí (černý náhled) a další zápis selže (Výkaz vozů v27). Chyba odeslání a příznaky
 // se proto drží zvlášť v localStorage a fotky se odesílají z kopie bajtů.
@@ -7,6 +9,7 @@
 const DB = 'zavady-outbox';
 const STORE = 'items';
 const STATE_KEY = 'zavady-outbox-stav'; // id → { error, unreadable, skip, sent }
+const REMIND_TAG = 'zavady-outbox'; // značka události sync i oznámení – stejná v sw.js
 let dbPromise;
 
 function db() {
@@ -65,6 +68,7 @@ export const outbox = {
     }
     await run('readwrite', (s) => s.put({ ...item, files, id, saved_at: new Date().toISOString(), error: null }));
     emit();
+    remindWhenOnline();
     return id;
   },
   async list() {
@@ -77,6 +81,8 @@ export const outbox = {
     await run('readwrite', (s) => s.delete(id));
     setState(id, null);
     emit();
+    // fronta je prázdná → připomínka v liště oznámení už neplatí
+    if (!(await run('readonly', (s) => s.count()))) clearReminder().catch(() => {});
   },
   /** Chyba odeslání – jen do localStorage, záznam s fotkami se nepřepisuje. */
   setError(id, error, extra = {}) {
@@ -93,6 +99,25 @@ export const outbox = {
     return () => listeners.delete(fn);
   },
 };
+
+/**
+ * Android (Chrome): po návratu signálu Chrome probudí service worker i u zamčeného telefonu a ten neodeslané
+ * závady připomene oznámením (sw.js, událost sync). Safari (iPhone) to neumí – tam se připomenou jen
+ * s jiným upozorněním z aplikace. Oznámení vyžaduje povolená upozornění.
+ */
+export function remindWhenOnline() {
+  navigator.serviceWorker?.ready.then((r) => r.sync?.register(REMIND_TAG)).catch(() => {});
+}
+
+/** Při odchodu z aplikace: čekají závady, které se mají odeslat (ne ty s chybou) → připomenout. */
+export async function remindIfPending() {
+  if ((await outbox.list()).some((i) => !i.error && !i.sent)) remindWhenOnline();
+}
+
+async function clearReminder() {
+  const reg = await navigator.serviceWorker?.getRegistration();
+  (await reg?.getNotifications({ tag: REMIND_TAG }))?.forEach((n) => n.close());
+}
 
 const unreadableText = (names, total) => (names.length === 1
   ? `Fotku nebo video „${names[0]}“ se v telefonu nepodařilo přečíst.`

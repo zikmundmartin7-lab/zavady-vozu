@@ -1373,7 +1373,7 @@ export function OutboxBanner() {
           <span class="spacer"></span>
           <button class="btn btn-primary" disabled=${busy} onClick=${sendNow}>${busy ? 'Odesílám…' : 'Odeslat teď'}</button>
         </div>
-        <div class="small">Zapsáno bez signálu. Odešle se samo, jakmile bude připojení.</div>`}
+        <div class="small">Zapsáno bez signálu. Odešle se samo, až bude signál a aplikace bude otevřená.</div>`}
       ${error && html`
         <div class="outbox-error small">
           <b>Závady zapsané bez signálu se v telefonu nepodařilo načíst:</b> ${error.message ?? String(error)}

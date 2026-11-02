@@ -1,6 +1,6 @@
 // Service worker: rychlé spuštění z paměti telefonu, offline záloha a push upozornění na nové závady.
 
-const CACHE = 'zavady-v62'; // zvýšit spolu s APP_VERSION v js/version.js
+const CACHE = 'zavady-v63'; // zvýšit spolu s APP_VERSION v js/version.js
 const PHOTO_CACHE = 'zavady-foto'; // fotky závad a obrázky katalogu (přežije novou verzi aplikace)
 const SHARED_CACHE = 'zavady-sdilene'; // fotky sdílené do aplikace z galerie, než si je vyzvedne formulář (js/draft.js)
 // Skener čísla vozu: neuronové sítě a ONNX runtime (asi 25 MB). V terénu nemusí být signál, proto se stáhnou
@@ -179,6 +179,56 @@ self.addEventListener('push', (e) => {
       tag: data.tag,
       data: { url: data.url || '#/' },
     });
+    // iPhone nemá událost sync – upozornění z aplikace je jediná chvíle, kdy jde neodeslané závady připomenout
+    await remindOutbox().catch(() => {});
+  })());
+});
+
+// Neodeslané závady (zápis bez signálu, js/outbox.js). Odeslat je odsud nejde – přihlášení je jen v aplikaci –,
+// tak se aspoň připomenou oznámením, ať uživatel aplikaci otevře se signálem.
+const OUTBOX_DB = 'zavady-outbox';
+const OUTBOX_TAG = 'zavady-outbox'; // značka události sync (registruje js/outbox.js) i oznámení
+
+// Počet závad ve frontě. Chyby a příznaky položek jsou v localStorage, kam service worker nevidí – počítá všechny.
+function outboxCount() {
+  return new Promise((res) => {
+    const r = indexedDB.open(OUTBOX_DB);
+    r.onupgradeneeded = () => r.transaction.abort(); // fronta ještě neexistuje – nezakládat ji (založí ji aplikace)
+    r.onerror = () => res(0);
+    r.onsuccess = () => {
+      const d = r.result;
+      try {
+        const q = d.transaction('items', 'readonly').objectStore('items').count();
+        q.onsuccess = () => { d.close(); res(q.result); };
+        q.onerror = () => { d.close(); res(0); };
+      } catch { d.close(); res(0); }
+    };
+  });
+}
+
+async function remindOutbox() {
+  const n = await outboxCount();
+  if (!n) return;
+  await self.registration.showNotification(n === 1 ? 'Neodeslaná závada' : `Neodeslané závady: ${n}`, {
+    body: `${n === 1 ? 'Je zapsaná' : 'Jsou zapsané'} bez signálu jen v telefonu. Otevřete aplikaci – odešle se sama.`,
+    icon: 'icons/icon-192.png?v=2',
+    badge: 'icons/badge-96.png?v=2',
+    tag: OUTBOX_TAG,
+    data: { url: '#/' },
+  });
+}
+
+// Android (Chrome): po návratu signálu Chrome probudí service worker i u zamčeného telefonu
+self.addEventListener('sync', (e) => {
+  if (e.tag !== OUTBOX_TAG) return;
+  e.waitUntil((async () => {
+    await new Promise((r) => setTimeout(r, 20000)); // otevřená aplikace odešle sama – dát jí čas
+    if (!(await outboxCount())) return;
+    // Chrome hlásí signál i tam, kde data neprojdou: ověřit. Chyba → Chrome událost zopakuje později.
+    await fetch(new URL('js/version.js', self.registration.scope), { cache: 'no-store' });
+    const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    if (wins.some((w) => w.visibilityState === 'visible')) return;
+    await remindOutbox().catch(() => {}); // upozornění nepovolená – nic
   })());
 });
 

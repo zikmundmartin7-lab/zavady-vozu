@@ -276,7 +276,7 @@ export function DefectFormView({ editId, params }) {
           setBusy('');
           return;
         }
-        toast('Bez signálu – závada je uložená v telefonu a odešle se sama, jakmile bude připojení.', { sticky: true });
+        toast('Bez signálu – závada je uložená v telefonu. Odešle se sama, až bude signál a aplikace bude otevřená.', { sticky: true });
         praise(toast, { always: true });
         await draft.clear(draftKey);
         goBack(fixedWagonId ? `#/vuz/${fixedWagonId}` : '#/');
