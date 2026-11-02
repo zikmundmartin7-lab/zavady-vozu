@@ -50,7 +50,7 @@ export async function knownNumbers(api) {
   const cached = groups.flatMap((g) => readCached(api.mode, `wagons:${g.id}`) ?? []).map((w) => w.number);
   if (cached.length) return cached;
   try {
-    return await api.listWagonNumbers();
+    return await api.listNumbers();
   } catch {
     return [];
   }

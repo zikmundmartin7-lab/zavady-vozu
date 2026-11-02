@@ -133,7 +133,8 @@ function App() {
   const reloadMe = () => api.getProfile().then(
     (p) => { setMe(p); saveMe(p); },
     // chyba sítě: nechat uživatele z paměti (data se načtou, až bude signál); bez něj zobrazit přihlášení.
-    // Vypršelé přihlášení vrací null (větev výše), takže tady se nikdo neodhlásí jen kvůli výpadku.
+    // Zrušené přihlášení vrací null (větev výše), výpadek sítě chybu (api.getProfile), takže tady se nikdo
+    // neodhlásí jen kvůli výpadku.
     (e) => { console.warn(e); setMe((cur) => (cur === undefined ? null : cur)); },
   );
   const refresh = () => setVersion((v) => v + 1);
@@ -158,8 +159,12 @@ function App() {
     };
     addEventListener('beforeinstallprompt', onInstall);
     addEventListener('appinstalled', onInstalled);
+    // Po návratu signálu ověřit přihlášení hned (spuštění bez signálu a bez uživatele v paměti skončí na přihlášení,
+    // i když je přihlášení v telefonu uložené)
+    addEventListener('online', reloadMe);
     return () => {
       off();
+      removeEventListener('online', reloadMe);
       removeEventListener('beforeinstallprompt', onInstall);
       removeEventListener('appinstalled', onInstalled);
     };

@@ -16,7 +16,32 @@ if (!window.supabase) {
   });
 }
 
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Přihlášení bez signálu (iPhone v režimu letadlo, 2. 11.). Přístupový klíč platí hodinu, pak ho knihovna
+// obnovuje u serveru. Bez signálu obnovení selže: přihlášení v telefonu zůstane, ale knihovna
+// 1) před každým dotazem zkouší klíč obnovit až ~30 s (formulář by tak dlouho hledal vůz a „ukládal“),
+// 2) minutu po neúspěšném pokusu hlásí „nepřihlášen“ a dotazy posílá anonymně – po návratu signálu databáze
+//    vrátila prázdné seznamy (přepsaly data stažená pro práci bez signálu) a odeslání fronty by skončilo
+//    „Nemáte oprávnění“.
+// Proto: bez signálu dotazy hned selžou jako výpadek sítě (AbortError knihovna neopakuje, jinak 7 s na dotaz)
+// a getSession neobnovuje klíč; anonymní dotaz na data s přihlášením uloženým v telefonu se nepošle (selže
+// jako výpadek sítě, fronta i stahování to zkusí znovu); po návratu signálu se klíč obnoví hned.
+const ANON_AUTH = `Bearer ${SUPABASE_ANON_KEY}`;
+function guardedFetch(input, init) {
+  if (!navigator.onLine) return Promise.reject(new DOMException('Failed to fetch', 'AbortError'));
+  const anonymous = !String(input?.url ?? input).includes('/auth/v1/')
+    && new Headers(init?.headers).get('Authorization') === ANON_AUTH;
+  if (anonymous && hasStoredSession()) return Promise.reject(new TypeError('Failed to fetch'));
+  return fetch(input, init);
+}
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { global: { fetch: guardedFetch } });
+function hasStoredSession() {
+  try { return !!localStorage.getItem(sb.auth.storageKey); } catch { return false; }
+}
+const getSession = sb.auth.getSession.bind(sb.auth);
+sb.auth.getSession = () => (navigator.onLine ? getSession() : Promise.resolve({
+  data: { session: null }, error: Object.assign(new Error('Failed to fetch'), { name: 'AuthRetryableFetchError' }),
+}));
+addEventListener('online', () => { sb.auth.lastRefreshFailure = null; }); // jinak by klíč minutu neobnovila
 const BUCKET = 'attachments';
 const REG_BUCKET = 'predpisy';
 const IMG_BUCKET = 'katalog';
@@ -162,9 +187,12 @@ export const api = {
   mode: 'supabase',
 
   // Přihlášení
+  // Neobnovený klíč kvůli síti = chyba sítě, ne „nepřihlášen“ (jinak by aplikace bez signálu odhlásila a smazala
+  // stažená data). Při odmítnutí serverem (zrušené přihlášení) knihovna přihlášení smaže a vrátí se null.
   async getProfile() {
-    const { data } = await sb.auth.getSession();
+    const { data, error } = await sb.auth.getSession();
     const user = data.session?.user;
+    if (!user && error?.name === 'AuthRetryableFetchError') fail(error);
     if (!user) return null;
     const p = check(await sb.from('profiles').select('*').eq('id', user.id).maybeSingle());
     // temp_password: účet založil administrátor (funkce create-user) a heslo zatím nikdo nezměnil
@@ -228,7 +256,7 @@ export const api = {
     return check(await sb.from('wagons').select('number, group_id').like('number', `____${code}____`).limit(1000));
   },
   // čísla všech vozů v evidenci (skener doplní začátek čísla, který se na voze nepřečte)
-  async listWagonNumbers() {
+  async listNumbers() {
     return (await fetchAll(() => sb.from('wagons').select('number').order('id'))).map((w) => w.number);
   },
   async createWagon(number, groupId) {

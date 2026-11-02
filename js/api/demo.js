@@ -266,7 +266,7 @@ export const api = {
     requireMember();
     return state.wagons.filter((w) => w.number.slice(4, 8) === code).map(({ number, group_id }) => ({ number, group_id }));
   },
-  async listWagonNumbers() {
+  async listNumbers() {
     requireMember();
     return state.wagons.map((w) => w.number);
   },
