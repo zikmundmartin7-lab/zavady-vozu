@@ -1324,21 +1324,23 @@ export function InstallOffer() {
 
 // ───── Zápis bez signálu: banner s frontou závad čekajících na odeslání ─────
 
+/** { items, error }: error = frontu v telefonu nejde přečíst (pak by čekající závady nebyly vidět) */
 export function useOutbox() {
-  const [items, setItems] = useState([]);
+  const [state, setState] = useState({ items: [], error: null });
   useEffect(() => {
-    const load = () => outbox.list().then(setItems, () => setItems([]));
+    const load = () => outbox.list().then((items) => setState({ items, error: null }),
+      (error) => setState((s) => ({ ...s, error })));
     load();
     return outbox.subscribe(load);
   }, []);
-  return items;
+  return state;
 }
 
 export function OutboxBanner() {
   const { api, toast, refresh } = useApp();
-  const items = useOutbox();
+  const { items, error } = useOutbox();
   const [busy, setBusy] = useState(false);
-  if (!items.length) return null;
+  if (!items.length && !error) return null;
   const failed = items.filter((i) => i.error);
 
   async function sendNow() {
@@ -1347,26 +1349,41 @@ export function OutboxBanner() {
       const n = await syncOutbox(api);
       if (n) { toast(`Odesláno: ${plural(n, 'závada', 'závady', 'závad')}.`); refresh(); }
       else if (!navigator.onLine) toast('Pořád bez připojení – odešle se samo, až bude signál.');
+    } catch (e) {
+      toast(`Odeslání se nepovedlo: ${e?.message ?? e}`, { kind: 'error' });
     } finally {
       setBusy(false);
     }
   }
   async function discard(item) {
-    if (confirm(`Zahodit neodeslanou závadu „${item.description.slice(0, 60)}“?`)) await outbox.remove(item.id);
+    if (!confirm(`Zahodit neodeslanou závadu „${item.description.slice(0, 60)}“?`)) return;
+    await outbox.remove(item.id).catch((e) => toast(`Závadu se nepodařilo zahodit: ${e?.message ?? e}`, { kind: 'error' }));
+  }
+  function sendWithout(item) {
+    outbox.skipUnreadable(item.id);
+    sendNow();
   }
 
   return html`
     <section class="outbox">
-      <div class="outbox-head">
-        <${Icon} name="cloud" />
-        <b>Čeká na odeslání: ${plural(items.length, 'závada', 'závady', 'závad')}</b>
-        <span class="spacer"></span>
-        <button class="btn btn-primary" disabled=${busy} onClick=${sendNow}>${busy ? 'Odesílám…' : 'Odeslat teď'}</button>
-      </div>
-      <div class="small">Zapsáno bez signálu. Odešle se samo, jakmile bude připojení.</div>
+      ${items.length > 0 && html`
+        <div class="outbox-head">
+          <${Icon} name="cloud" />
+          <b>Čeká na odeslání: ${plural(items.length, 'závada', 'závady', 'závad')}</b>
+          <span class="spacer"></span>
+          <button class="btn btn-primary" disabled=${busy} onClick=${sendNow}>${busy ? 'Odesílám…' : 'Odeslat teď'}</button>
+        </div>
+        <div class="small">Zapsáno bez signálu. Odešle se samo, jakmile bude připojení.</div>`}
+      ${error && html`
+        <div class="outbox-error small">
+          <b>Závady zapsané bez signálu se v telefonu nepodařilo načíst:</b> ${error.message ?? String(error)}
+        </div>`}
       ${failed.map((i) => html`
         <div key=${i.id} class="outbox-error small">
-          <b>Nepodařilo se odeslat:</b> ${i.description.slice(0, 80)} – ${i.error}
+          <b>${i.sent ? 'Odesláno, jen se nesmazalo z telefonu:' : 'Nepodařilo se odeslat:'}</b> ${i.description.slice(0, 80)} – ${i.error}
+          ${i.unreadable > 0 && html`
+            <button class="link-btn" disabled=${busy} onClick=${() => sendWithout(i)}>
+              ${i.unreadable === 1 ? 'Odeslat bez ní' : 'Odeslat bez nich'}</button>`}
           <button class="link-btn" onClick=${() => discard(i)}>Zahodit</button>
         </div>`)}
     </section>`;

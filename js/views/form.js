@@ -102,6 +102,7 @@ export function DefectFormView({ editId, params }) {
   const draftKey = editId ? null : presetWagonId ? `vuz:${presetWagonId}` : 'nova';
   const [draftReady, setDraftReady] = useState(!draftKey);
   const [restoredAt, setRestoredAt] = useState(null);
+  const saveWarned = useRef(false); // chyba ukládání fotek konceptu se hlásí jen jednou
 
   // Při úpravě předvyplnit hodnoty
   useEffect(() => {
@@ -128,6 +129,12 @@ export function DefectFormView({ editId, params }) {
         if (d.foundAt) setFoundAt(d.foundAt);
         setFiles(d.files);
         setRestoredAt(d.saved_at);
+        if (d.filesFailed) toast('Fotky rozepsané závady se nepodařilo načíst – zkontrolujte je a případně vyfoťte znovu.', { kind: 'error', sticky: true });
+        else if (d.unreadable) {
+          toast(d.unreadable === 1 ? 'Jednu fotku nebo video z rozepsané závady se nepodařilo přečíst – vyfoťte ji znovu.'
+            : `Fotky nebo videa z rozepsané závady (${d.unreadable}) se nepodařilo přečíst – vyfoťte je znovu.`,
+          { kind: 'error', sticky: true });
+        }
       }
       if (shared.length) addFiles(shared);
       setDraftReady(true);
@@ -142,7 +149,13 @@ export function DefectFormView({ editId, params }) {
     else draft.clear(draftKey);
   }, [draftReady, number, groupId, code, description, foundAt, hasContent]);
   useEffect(() => {
-    if (draftReady && draftKey) draft.saveFiles(draftKey, files);
+    if (!draftReady || !draftKey) return;
+    draft.saveFiles(draftKey, files).catch((e) => {
+      if (saveWarned.current) return;
+      saveWarned.current = true;
+      toast(`Fotky se nepodařilo uložit do rozepsané závady v telefonu (${e?.message ?? e}). Závadu uložte, než formulář opustíte.`,
+        { kind: 'error', sticky: true });
+    });
   }, [draftReady, files]);
 
   function discardDraft() {
@@ -252,10 +265,17 @@ export function DefectFormView({ editId, params }) {
     } catch (err) {
       // Bez signálu: novou závadu uložit v telefonu a odeslat později (úpravy jen s připojením)
       if (!editId && (err.network || !navigator.onLine) && description.trim()) {
-        await outbox.add({
-          wagon_id: wagon?.id ?? null, number, group_id: groupId, description: description.trim(),
-          defect_code: code || null, found_at: found_at ?? new Date().toISOString(), files,
-        });
+        try {
+          await outbox.add({
+            wagon_id: wagon?.id ?? null, number, group_id: groupId, description: description.trim(),
+            defect_code: code || null, found_at: found_at ?? new Date().toISOString(), files,
+          });
+        } catch (e) {
+          setError(new Error(`Bez signálu a závadu se nepodařilo uložit ani v telefonu: ${e?.message ?? e} `
+            + 'Formulář nezavírejte a zkuste Uložit znovu.'));
+          setBusy('');
+          return;
+        }
         toast('Bez signálu – závada je uložená v telefonu a odešle se sama, jakmile bude připojení.', { sticky: true });
         praise(toast, { always: true });
         await draft.clear(draftKey);
