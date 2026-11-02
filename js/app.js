@@ -4,8 +4,8 @@ import { html, render, useCallback, useEffect, useState } from '../vendor/preact
 import { api } from './api/index.js';
 import { can, formatNumber } from './model.js';
 import {
-  AppCtx, Lightbox, Loading, PullToRefresh, ShareDialog, Toasts, clearLocalCache, forgetScreen, isPushOff, readCached, reloadApp,
-  restoreScroll, writeCached,
+  AppCtx, Lightbox, Loading, PullToRefresh, ShareDialog, Toasts, clearLocalCache, closeNotifications, forgetScreen, isPushOff,
+  readCached, reloadApp, restoreScroll, writeCached,
 } from './ui.js';
 import { lastPrefetchAt, prefetchAll, prefetchOcr } from './offline.js';
 import { AccountView, LoginView, PendingView, RecoveryView, UsersView } from './views/account.js';
@@ -319,9 +319,14 @@ function App() {
     // Komentáře závady jsou přečtené (otevřená závada) – hned zmizí z odznaku, databáze se dozví na pozadí
     commentsSeen: (defectId) => {
       setCommentInbox((rows) => rows.filter((r) => r.defect_id !== defectId));
+      closeNotifications(`#/zavada/${defectId}`).catch(() => {});
       return api.markCommentsSeen(defectId).catch(() => {}).finally(() => setInboxTick((n) => n + 1));
     },
-    wagonSeen: (id) => setSeenWagons((m) => new Map(m).set(id, Date.now())),
+    // Vůz prohlédnutý (otevřený nebo rozbalený v seznamu) – i jeho oznámení o nových závadách v liště jsou vyřízená
+    wagonSeen: (id) => {
+      setSeenWagons((m) => new Map(m).set(id, Date.now()));
+      closeNotifications(`#/vuz/${id}`).catch(() => {});
+    },
   };
 
   let content;

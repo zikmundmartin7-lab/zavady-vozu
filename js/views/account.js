@@ -6,8 +6,8 @@ import { APP_VERSION } from '../version.js';
 import { ocrReady, prefetchOcr } from '../offline.js';
 import { browserVersion, installCzech, offlineDictation } from '../dictation.js';
 import {
-  DefectVideoLink, Empty, ErrorBox, Icon, InstallOffer, Loading, PasswordInput, TopBar, enablePush, isAndroid, isIos, isStandalone, setPushOff,
-  swVersion, updateApp, useApp, useLoad,
+  DefectVideoLink, Empty, ErrorBox, Icon, InstallOffer, Loading, PasswordInput, TopBar, closeNotifications, enablePush, isAndroid, isIos,
+  isStandalone, setPushOff, swVersion, updateApp, useApp, useLoad,
 } from '../ui.js';
 
 function DemoLogin() {
@@ -551,6 +551,8 @@ export function UsersView() {
   const users = useLoad(() => api.listProfiles(), []);
   const [creating, setCreating] = useState(false);
   const [created, setCreated] = useState(null); // { name, email, password, warning } – právě založený účet
+  // Upozornění „Nový uživatel čeká na schválení“ v liště jsou tímhle vyřízená
+  useEffect(() => { if (can.admin(me)) closeNotifications('#/uzivatele').catch(() => {}); }, []);
   if (!can.admin(me)) return html`<${TopBar} back="#/" title="Uživatelé" /><main class="page"><${Empty}>Jen pro administrátora.<//></main>`;
   const list = [...(users.data ?? [])].sort((a, b) => (a.role === 'pending' ? 0 : 1) - (b.role === 'pending' ? 0 : 1));
 

@@ -207,6 +207,16 @@ export function useWagonSeen(id) {
 export const isNewDefect = (d, seenBefore, me) => !!seenBefore && !d.resolved_at && d.created_by !== me.id
   && Date.parse(d.created_at) > Date.parse(seenBefore);
 
+/**
+ * Oznámení v liště, jehož obsah už uživatel v aplikaci viděl, zavřít (url = data.url oznámení ze sw.js).
+ * Android podle oznámení v liště ukazuje číslo na ikoně aplikace – klepnutí na oznámení ho zavře samo,
+ * ale po otevření aplikace ikonou zůstávalo viset (hlášení uživatele 2. 11.).
+ */
+export async function closeNotifications(url) {
+  const reg = await navigator.serviceWorker?.getRegistration();
+  (await reg?.getNotifications())?.filter((n) => n.data?.url === url).forEach((n) => n.close());
+}
+
 // ───── Ikony ─────
 
 const circle = (cx, cy, r) => `M${cx - r} ${cy}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0`;
