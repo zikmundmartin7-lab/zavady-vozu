@@ -227,6 +227,10 @@ export const api = {
   async listSeriesWagons(code) {
     return check(await sb.from('wagons').select('number, group_id').like('number', `____${code}____`).limit(1000));
   },
+  // čísla všech vozů v evidenci (skener doplní začátek čísla, který se na voze nepřečte)
+  async listWagonNumbers() {
+    return (await fetchAll(() => sb.from('wagons').select('number').order('id'))).map((w) => w.number);
+  },
   async createWagon(number, groupId) {
     const w = check(await sb.from('wagons')
       .insert({ number, group_id: groupId, created_by: await currentUserId() }).select('id').single());

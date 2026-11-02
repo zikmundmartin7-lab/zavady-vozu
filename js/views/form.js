@@ -15,7 +15,7 @@ import { CodePicker } from './codes.js';
 import { draft, takeSharedFiles } from '../draft.js';
 import { DictateButton, joinDictated } from '../dictation.js';
 import { outbox } from '../outbox.js';
-import { suggestGroup } from '../series.js';
+import { knownNumbers, suggestGroup } from '../series.js';
 
 function FilePicker({ onFiles }) {
   const pick = (e) => {
@@ -386,7 +386,7 @@ export function DefectFormView({ editId, params }) {
           ${busy || (editId ? 'Uložit změny' : 'Uložit závadu')}
         </button>
       </form>
-      ${Scanner && html`<${Scanner} onClose=${() => setScanner(null)}
+      ${Scanner && html`<${Scanner} onClose=${() => setScanner(null)} known=${() => knownNumbers(api)}
         onDone=${(n) => { setNumber(n); setScanner(null); }} />`}
     </main>`;
 }

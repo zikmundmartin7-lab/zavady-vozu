@@ -8,7 +8,7 @@
 
 import { html, useEffect, useRef, useState } from '../../vendor/preact-htm.js';
 import { loadOcr, readText } from '../ocr.js';
-import { formatNumber, numberCandidates } from '../model.js';
+import { formatNumber, indexWagons, numberCandidates } from '../model.js';
 import { CameraSteps, Icon, WagonNumber, isAndroid, isIos, useBackClose } from '../ui.js';
 import { useCameraLight, LightButtons, BrightnessSlider, applyGain } from '../light.js';
 import { ocrReady } from '../offline.js';
@@ -69,11 +69,13 @@ function shot(canvas, lines, idx) {
 }
 
 /** Celoobrazovkový skener. onDone(number) – přečtené a potvrzené číslo (12 číslic). */
-export function Scanner({ onDone, onClose }) {
+// known() – čísla známých vozů (evidence): doplní začátek čísla, který se na voze nepřečte (přetřené „83“).
+export function Scanner({ onDone, onClose, known }) {
   const videoRef = useRef();
   const guideRef = useRef();
   const pausedRef = useRef(false);
-  const offeredRef = useRef([]);                 // nabídnutá čísla { number, shot } v pořadí, jak přišla
+  const offeredRef = useRef([]);                 // nabídnutá čísla { number, shot, filled } v pořadí, jak přišla
+  const knownRef = useRef(null);                 // indexWagons(známé vozy)
   const [camera, setCamera] = useState('start'); // start | live | denied | none
   const [size, setSize] = useState('');          // skutečné rozlišení kamery
   const [ready, setReady] = useState(false);
@@ -85,6 +87,10 @@ export function Scanner({ onDone, onClose }) {
   const [error, setError] = useState(null);
 
   useBackClose(onClose);
+  // známé vozy se načtou jednou při otevření (z paměti telefonu, bez čekání na signál)
+  useEffect(() => {
+    known?.().then((list) => { knownRef.current = indexWagons(list); }, () => {});
+  }, []);
   const light = useCameraLight();
   const gainRef = useRef(1);
   gainRef.current = light.gain;
@@ -135,7 +141,7 @@ export function Scanner({ onDone, onClose }) {
         if (stopped || pausedRef.current) continue;
         setReading(lines.filter((l) => /\d/.test(l.text)).map((l) => l.text).join('  ').slice(0, 40));
         for (const [k, v] of votes) votes.set(k, { sure: v.sure * DECAY, valid: v.valid * DECAY });
-        const cands = numberCandidates(lines).filter((c) => c.valid).slice(0, 3);
+        const cands = numberCandidates(lines, knownRef.current).filter((c) => c.valid).slice(0, 3);
         for (const c of cands) {
           const v = votes.get(c.number) ?? { sure: 0, valid: 0 };
           votes.set(c.number, { sure: v.sure + (c.sure ? 2 : 0), valid: v.valid + 1 });
@@ -145,11 +151,11 @@ export function Scanner({ onDone, onClose }) {
         if (best && best[1].sure >= ACCEPT) {
           navigator.vibrate?.(80);
           const c = cands.find((x) => x.number === best[0]);
-          setFound({ number: best[0], shot: shot(canvas, lines, c?.lines) });
+          setFound({ number: best[0], filled: c?.filled, shot: shot(canvas, lines, c?.lines) });
         } else {
           // výřez ke kontrole jen jednou, když se číslo poprvé nabídne (převod na obrázek něco stojí)
           offer(cands.filter((c) => votes.get(c.number).valid >= MAYBE && !isOffered(c.number))
-            .map((c) => ({ number: c.number, shot: shot(canvas, lines, c.lines) })));
+            .map((c) => ({ number: c.number, filled: c.filled, shot: shot(canvas, lines, c.lines) })));
         }
         await sleep(60);
       }
@@ -167,13 +173,13 @@ export function Scanner({ onDone, onClose }) {
       const bmp = await createImageBitmap(file);
       const c = grab(bmp, { x: 0, y: 0, w: bmp.width, h: bmp.height }, document.createElement('canvas'), PHOTO_SIDE);
       const lines = await readText(c, { maxSide: 1600 });
-      const cands = numberCandidates(lines).filter((x) => x.valid);
+      const cands = numberCandidates(lines, knownRef.current).filter((x) => x.valid);
       // Samo se přijme jen „jisté“ číslo jako u kamery. Jediné číslo s platnou kontrolní číslicí bývá náhoda
       // (složené z údajů tabulek: 429.0, 1500 kg, 11.19 m …), proto se jen nabídne.
       const sure = cands.find((x) => x.sure);
-      if (sure) setFound({ number: sure.number, shot: shot(c, lines, sure.lines) });
+      if (sure) setFound({ number: sure.number, filled: sure.filled, shot: shot(c, lines, sure.lines) });
       else {
-        offer(cands.slice(0, 3).map((x) => ({ number: x.number, shot: shot(c, lines, x.lines) })));
+        offer(cands.slice(0, 3).map((x) => ({ number: x.number, filled: x.filled, shot: shot(c, lines, x.lines) })));
         setError(cands.length > 1 ? 'Na fotce je víc možných čísel – ťukněte na správné.'
           : cands.length ? 'Číslo se nepodařilo přečíst jistě – když souhlasí, ťukněte na něj.'
             : 'Číslo se z fotky nepodařilo přečíst. Vyfoťte ho zblízka, nebo ho zadejte ručně.');
@@ -218,6 +224,8 @@ export function Scanner({ onDone, onClose }) {
               <div class="found"><${WagonNumber} number=${found.number} /></div>
             </div>
             <p class="hint center">Nahoře snímek, pod ním přečtené číslo – porovnejte je. Ve formuláři jde číslo ještě opravit.</p>
+            ${found.filled && html`<p class="hint center"><b>Začátek čísla se na voze nepřečetl</b> – doplněný podle ${found.filled === 'vuz'
+              ? 'vozu se stejným koncem čísla, který aplikace zná' : 'vozů stejné řady, které aplikace zná'}. Porovnejte ho s vozem.</p>`}
             <div class="row">
               <button type="button" class="btn" onClick=${() => { setFound(null); setError(null); }}>Znovu</button>
               <button type="button" class="btn btn-ok big-btn grow" onClick=${() => onDone(found.number)}>

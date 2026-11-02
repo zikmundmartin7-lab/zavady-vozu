@@ -42,6 +42,21 @@ async function sameSeriesWagons(api, code) {
 }
 
 /**
+ * Čísla vozů v evidenci pro skener čísla (doplní začátek čísla, který se na voze nepřečte – přetřené „83“):
+ * z paměti telefonu (stahování na pozadí), dokud tam nic není, ze sítě.
+ */
+export async function knownNumbers(api) {
+  const groups = readCached(api.mode, 'groups') ?? [];
+  const cached = groups.flatMap((g) => readCached(api.mode, `wagons:${g.id}`) ?? []).map((w) => w.number);
+  if (cached.length) return cached;
+  try {
+    return await api.listWagonNumbers();
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Návrh skupiny pro nový vůz: { groupId, series, count } – count = kolik vozů stejné řady v evidenci tu skupinu má
  * (0 = podle písmen řady); groupId null = skupinu nejde odhadnout. null = číslo není celé.
  */
