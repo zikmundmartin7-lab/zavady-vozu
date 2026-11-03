@@ -274,7 +274,10 @@ a.card.list-row { padding: 16px; }
   display: flex; gap: .5rem; align-items: flex-start; margin-top: .6rem; padding: .55rem .7rem;
   background: var(--ok-bg); color: var(--ok-ink); border-radius: 10px; font-size: .9rem;
 }
+.resolution > div { flex: 1; min-width: 0; }
+.resolution .media-grid { margin-top: .5rem; }
 .resolve-form { margin-top: .6rem; }
+.resolve-form .hint { margin-bottom: .6rem; }
 .resolve-form textarea, .form textarea, .field input, .number-input {
   width: 100%; border: 1px solid var(--border); border-radius: 10px; padding: .6rem .75rem; background: var(--surface);
   resize: vertical; margin-bottom: .5rem;

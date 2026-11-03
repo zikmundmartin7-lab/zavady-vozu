@@ -107,11 +107,13 @@ async function signedUrls(paths) {
   return urls;
 }
 
+// attachments = fotky a videa závady, repair_attachments = z opravy (ukazují se u „Opraveno …“)
 function attachUrls(defects, atts, urls) {
-  return defects.map((d) => ({
-    ...d,
-    attachments: atts.filter((a) => a.defect_id === d.id).map((a) => ({ ...a, url: urls.get(a.path) ?? '' })),
-  }));
+  const withUrl = (a) => ({ ...a, url: urls.get(a.path) ?? '' });
+  return defects.map((d) => {
+    const own = atts.filter((a) => a.defect_id === d.id);
+    return { ...d, attachments: own.filter((a) => !a.repair).map(withUrl), repair_attachments: own.filter((a) => a.repair).map(withUrl) };
+  });
 }
 
 async function withUrls(defects) {
@@ -154,17 +156,20 @@ function overviewRows(defects, wagons, groups, atts, seen) {
   });
 }
 
+// Fotka (zmenšená) nebo video do úložiště; řádek v tabulce attachments zapíše volající
+async function storeFile(defectId, file) {
+  const blob = await compressImage(file);
+  const ext = (blob.name?.split('.').pop() || (blob.type.split('/')[1] ?? 'bin')).toLowerCase();
+  const path = `${defectId}/${uid()}.${ext}`;
+  check(await sb.storage.from(BUCKET).upload(path, blob, { contentType: blob.type }));
+  return { path, kind: file.type.startsWith('video/') ? 'video' : 'image' };
+}
+
 async function uploadFiles(defectId, files, onProgress) {
   let i = 0;
   for (const file of files) {
     onProgress?.(++i, files.length);
-    const blob = await compressImage(file);
-    const ext = (blob.name?.split('.').pop() || (blob.type.split('/')[1] ?? 'bin')).toLowerCase();
-    const path = `${defectId}/${uid()}.${ext}`;
-    check(await sb.storage.from(BUCKET).upload(path, blob, { contentType: blob.type }));
-    check(await sb.from('attachments').insert({
-      defect_id: defectId, path, kind: file.type.startsWith('video/') ? 'video' : 'image',
-    }));
+    check(await sb.from('attachments').insert({ defect_id: defectId, ...await storeFile(defectId, file) }));
   }
 }
 
@@ -299,9 +304,24 @@ export const api = {
   async deleteDefect(id) {
     check(await sb.from('defects').delete().eq('id', id));
   },
-  async resolveDefect(id, note) {
-    check(await sb.from('defects')
-      .update({ resolved_at: new Date().toISOString(), resolution_note: note?.trim() || null }).eq('id', id));
+  // Oprava i s fotkami a videi (funkce resolve_defect, migrace_09): soubory se nahrají předem, závada se označí
+  // a přílohy zapíšou najednou – buď všechno, nebo nic. Po chybě se nahrané soubory z úložiště uklidí; ne když
+  // vypadla síť až při zápisu (nejde poznat, jestli se oprava uložila – soubory by pak chyběly).
+  async resolveDefect(id, note, files = [], onProgress) {
+    const stored = [];
+    let sent = false;
+    try {
+      let i = 0;
+      for (const file of files) {
+        onProgress?.(++i, files.length);
+        stored.push(await storeFile(id, file));
+      }
+      sent = true;
+      check(await sb.rpc('resolve_defect', { p_defect: id, p_note: note?.trim() || null, p_files: stored }));
+    } catch (e) {
+      if (stored.length && !(sent && e.network)) sb.storage.from(BUCKET).remove(stored.map((f) => f.path)).catch(() => {});
+      throw e;
+    }
   },
   async reopenDefect(id) {
     check(await sb.from('defects').update({ resolved_at: null, resolution_note: null }).eq('id', id));

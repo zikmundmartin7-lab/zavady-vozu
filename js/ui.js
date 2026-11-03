@@ -1,7 +1,7 @@
 // Sdílené komponenty a pomocné funkce pro obrazovky.
 
-import { html, createContext, useContext, useEffect, useRef, useState } from '../vendor/preact-htm.js';
-import { can, digitsOnly, foundAtOf, formatDateTime, formatNumber, plural, splitNumber } from './model.js';
+import { html, createContext, useContext, useEffect, useMemo, useRef, useState } from '../vendor/preact-htm.js';
+import { MAX_VIDEO_MB, can, digitsOnly, foundAtOf, formatDateTime, formatNumber, plural, splitNumber } from './model.js';
 import { matchRanges } from './codes.js';
 import { outbox, syncOutbox } from './outbox.js';
 
@@ -499,12 +499,30 @@ export function WagonSearch({ groupId, onQuery }) {
 
 // ───── Karta závady ─────
 
+// Náhledy fotek a videí, klepnutím přes celou obrazovku; download = začátek názvu stažených souborů
+function MediaGrid({ items, download }) {
+  const { openMedia } = useApp();
+  return html`
+    <div class="media-grid">
+      ${items.map((a, i) => html`
+        <button key=${a.id} class="media-thumb" onClick=${() => openMedia(items, i, { download })}
+          aria-label=${a.kind === 'video' ? 'Přehrát video' : 'Zobrazit fotku'}>
+          ${a.kind === 'video'
+            ? html`<video src=${a.url} preload="none" muted playsinline></video><span class="play"><${Icon} name="play" size=${22} /></span>`
+            : html`<img src=${a.url} alt="" loading="lazy" />`}
+        </button>`)}
+    </div>`;
+}
+
 // Ve videonávodu (video/zadani-zavady-android.mp4) – vzhled, pořadí a texty neměnit bez souhlasu uživatele (README → návod, videonávody).
 export function DefectCard({ d, wagon = null, showComments = true, isNew = false }) {
-  const { api, me, refresh, toast, openMedia, share, commentInbox } = useApp();
+  const { api, me, refresh, toast, share, commentInbox } = useApp();
   const unreadComments = commentInbox?.find((r) => r.defect_id === d.id)?.unread ?? 0;
   const [resolving, setResolving] = useState(false);
   const [note, setNote] = useState('');
+  const [repairFiles, setRepairFiles] = useState([]); // fotky a videa z opravy (formulář Označit jako opravené)
+  const repairPreviews = usePreviews(repairFiles);
+  const [progress, setProgress] = useState('');
   const [busy, setBusy] = useState(false);
   const catalog = useCatalog();
   const resolved = !!d.resolved_at;
@@ -527,8 +545,10 @@ export function DefectCard({ d, wagon = null, showComments = true, isNew = false
     }
   }
 
-  const resolve = () => run(() => api.resolveDefect(d.id, note), 'Závada označena jako opravená.')
-    .then((ok) => { if (ok) { setResolving(false); setNote(''); } });
+  const resolve = () => run(() => api.resolveDefect(d.id, note, repairFiles,
+    (i, n) => setProgress(`Nahrávám přílohu ${i}/${n}…`)), 'Závada označena jako opravená.')
+    .then((ok) => { setProgress(''); if (ok) { setResolving(false); setNote(''); setRepairFiles([]); } });
+  const fileName = (what) => [what, (wagon?.number ?? d.number ?? '').slice(-4)].filter(Boolean).join('-');
   const reopen = () => confirm('Vrátit závadu mezi neopravené?')
     && run(() => api.reopenDefect(d.id), 'Závada vrácena mezi aktivní.');
   const remove = () => confirm('Opravdu smazat tuto závadu včetně fotek a komentářů?')
@@ -552,16 +572,7 @@ export function DefectCard({ d, wagon = null, showComments = true, isNew = false
         Vložil(a) ${d.created_by_name || 'neznámý uživatel'}${backdated ? ` · zapsáno ${formatDateTime(d.created_at)}` : ''}${d.updated_at ? ' · upraveno' : ''}
       </div>
 
-      ${d.attachments?.length > 0 && html`
-        <div class="media-grid">
-          ${d.attachments.map((a, i) => html`
-            <button key=${a.id} class="media-thumb" onClick=${() => openMedia(d.attachments, i, { download: ['zavada', (wagon?.number ?? d.number ?? '').slice(-4)].filter(Boolean).join('-') })}
-              aria-label=${a.kind === 'video' ? 'Přehrát video' : 'Zobrazit fotku'}>
-              ${a.kind === 'video'
-                ? html`<video src=${a.url} preload="none" muted playsinline></video><span class="play"><${Icon} name="play" size=${22} /></span>`
-                : html`<img src=${a.url} alt="" loading="lazy" />`}
-            </button>`)}
-        </div>`}
+      ${d.attachments?.length > 0 && html`<${MediaGrid} items=${d.attachments} download=${fileName('zavada')} />`}
 
       ${resolved && html`
         <div class="resolution">
@@ -569,6 +580,7 @@ export function DefectCard({ d, wagon = null, showComments = true, isNew = false
           <div>
             <b>Opraveno ${formatDateTime(d.resolved_at)}</b> – ${d.resolved_by_name || 'neznámý uživatel'}
             ${d.resolution_note && html`<div>${d.resolution_note}</div>`}
+            ${d.repair_attachments?.length > 0 && html`<${MediaGrid} items=${d.repair_attachments} download=${fileName('oprava')} />`}
           </div>
         </div>`}
 
@@ -576,8 +588,16 @@ export function DefectCard({ d, wagon = null, showComments = true, isNew = false
         <div class="resolve-form">
           <textarea rows="2" placeholder="Poznámka k opravě (nepovinné)" value=${note}
             onInput=${(e) => setNote(e.currentTarget.value)}></textarea>
+          <${FilePicker} onFiles=${(list) => setRepairFiles((prev) => [...prev, ...acceptMedia(list, toast)])} />
+          ${repairPreviews.length > 0 && html`
+            <div class="media-grid">
+              ${repairPreviews.map((p, i) => html`<${Preview} key=${p.url} kind=${p.kind} url=${p.url}
+                onRemove=${() => setRepairFiles(repairFiles.filter((_, j) => j !== i))} />`)}
+            </div>`}
+          <div class="hint">Fotky a videa z opravy (nepovinné). Fotky se automaticky zmenší, video max. ${MAX_VIDEO_MB} MB.</div>
           <div class="row">
-            <button class="btn btn-ok" disabled=${busy} onClick=${resolve}><${Icon} name="check" /> Potvrdit opravu</button>
+            <button class="btn btn-ok" disabled=${busy} onClick=${resolve}>
+              ${progress || html`<${Icon} name="check" /> Potvrdit opravu`}</button>
             <button class="btn" onClick=${() => setResolving(false)}>Zrušit</button>
           </div>
         </div>`}
@@ -1208,6 +1228,81 @@ export function CameraSteps() {
         : html`<li>Když to nepomůže: v Chromu <b>⋮ → Nastavení → Nastavení webu → Fotoaparát</b> a povolit tuto stránku.</li>`}
       <li>Na Samsungu ještě zkontrolujte, že v horní liště není vypnutý <b>Přístup k fotoaparátu</b>.</li>
     </ol>`;
+}
+
+// ───── Výběr fotek a videí (formulář závady, oprava závady) ─────
+
+// Ve videonávodu (video/zadani-zavady-android.mp4, formulář Nová závada) – vzhled a texty neměnit bez souhlasu uživatele.
+export function FilePicker({ onFiles }) {
+  const pick = (e) => {
+    onFiles([...e.currentTarget.files]);
+    e.currentTarget.value = '';
+  };
+  // Zakázaný fotoaparát: Vyfotit a Natočit by tiše nic neudělaly, tak to rovnou říct (jen Android)
+  const { toast } = useApp();
+  const [camera, setCamera] = useCameraPermission();
+  const [checking, setChecking] = useState(false);
+  async function recheck() {
+    setChecking(true);
+    try {
+      const r = await requestCamera();
+      setCamera(r === 'error' ? null : r);
+      if (r === 'granted') toast('Fotoaparát povolen.');
+    } finally {
+      setChecking(false);
+    }
+  }
+  return html`
+    ${camera === 'denied' && html`
+      <div class="warn camera-warn"><${Icon} name="alert" size=${16} />
+        <div>
+          <b>Fotoaparát je zakázaný</b> – Vyfotit a Natočit nepůjdou, z galerie ano. Povolíte ho takto:
+          <${CameraSteps} />
+          <button type="button" class="btn" disabled=${checking} onClick=${recheck}>
+            ${checking ? 'Ověřuji…' : 'Zkontrolovat znovu'}</button>
+        </div>
+      </div>`}
+    <div class="file-buttons">
+      <label class="btn"><${Icon} name="camera" /> Vyfotit
+        <input type="file" accept="image/*" capture="environment" hidden onChange=${pick} /></label>
+      <label class="btn"><${Icon} name="video" /> Natočit
+        <input type="file" accept="video/*" capture="environment" hidden onChange=${pick} /></label>
+      <label class="btn"><${Icon} name="image" /> Z galerie
+        <input type="file" accept="image/*,video/*" multiple hidden onChange=${pick} /></label>
+    </div>`;
+}
+
+export function Preview({ kind, url, onRemove }) {
+  return html`
+    <div class="media-thumb">
+      ${kind === 'video' ? html`<video src=${url} preload="metadata" muted playsinline></video>` : html`<img src=${url} alt="" />`}
+      ${kind === 'video' && html`<span class="play"><${Icon} name="play" size=${22} /></span>`}
+      <button type="button" class="remove" onClick=${onRemove} aria-label="Odebrat"><${Icon} name="x" size=${16} /></button>
+    </div>`;
+}
+
+/** Vybrané soubory, které jde přiložit (fotky a videa do MAX_VIDEO_MB); u ostatních ukáže chybu. */
+export function acceptMedia(list, toast) {
+  const ok = [];
+  for (const f of list) {
+    if (!f.type.startsWith('image/') && !f.type.startsWith('video/')) {
+      toast(`Soubor ${f.name} není fotka ani video.`, { kind: 'error' });
+    } else if (f.type.startsWith('video/') && f.size > MAX_VIDEO_MB * 1024 * 1024) {
+      toast(`Video je větší než ${MAX_VIDEO_MB} MB – zkraťte ho nebo natočte v nižším rozlišení.`, { kind: 'error' });
+    } else {
+      ok.push(f);
+    }
+  }
+  return ok;
+}
+
+/** Náhledy vybraných souborů (adresy se po změně výběru uvolní). */
+export function usePreviews(files) {
+  const previews = useMemo(() => files.map((f) => ({
+    file: f, url: URL.createObjectURL(f), kind: f.type.startsWith('video/') ? 'video' : 'image',
+  })), [files]);
+  useEffect(() => () => previews.forEach((p) => URL.revokeObjectURL(p.url)), [previews]);
+  return previews;
 }
 
 /** Karta na úvodní obrazovce: povolit fotoaparát předem, ať Vyfotit a Natočit u vozu fungují napoprvé. */

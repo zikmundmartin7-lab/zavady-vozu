@@ -89,7 +89,8 @@ export function prefetchOcr() {
 async function storePhotos(api, all, open) {
   if (api.mode !== 'supabase' || !window.caches) return;
   const cache = await caches.open(PHOTO_CACHE);
-  const known = new Set(all.flatMap((d) => d.attachments ?? []).filter((a) => a.url).map((a) => photoKey(a.url)));
+  const known = new Set(all.flatMap((d) => [...d.attachments ?? [], ...d.repair_attachments ?? []])
+    .filter((a) => a.url).map((a) => photoKey(a.url)));
   for (const req of await cache.keys()) {
     if (req.url.includes('/object/sign/attachments/') && !known.has(photoKey(req.url))) await cache.delete(req);
   }

@@ -7,7 +7,7 @@ const short = (s, n = 90) => {
   return t.length > n ? `${t.slice(0, n - 1)}…` : t;
 };
 const quote = (s) => `„${short(s)}“`;
-const kind = (row) => (row?.kind === 'video' ? 'video' : 'fotku');
+const kind = (row) => `${row?.kind === 'video' ? 'video' : 'fotku'}${row?.repair ? ' k opravě' : ''}`;
 
 function defectChanges(o, n) {
   const lines = [];
@@ -120,7 +120,8 @@ export function groupTrash(entries, wagonNumbers) {
       title = `Komentář u závady na voze ${num(comments[0].wagon_id)}`;
       lines.push(quote(c.body));
     } else if (atts.length) {
-      title = `${atts.length === 1 ? 'Fotka/video' : plural(atts.length, '', 'fotky/videa', 'fotek/videí')} u závady na voze ${num(atts[0].wagon_id)}`;
+      const repair = atts.every((a) => a.old_row?.repair) ? ' k opravě' : ''; // smazané vrácením mezi neopravené
+      title = `${atts.length === 1 ? 'Fotka/video' : plural(atts.length, '', 'fotky/videa', 'fotek/videí')}${repair} u závady na voze ${num(atts[0].wagon_id)}`;
     } else if (regs.length) {
       title = `Předpis ${quote(regs[0].old_row.title)}`;
     } else {

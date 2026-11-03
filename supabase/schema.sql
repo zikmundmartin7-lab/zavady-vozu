@@ -203,10 +203,57 @@ create table public.attachments (
   defect_id   uuid not null references public.defects on delete cascade,
   path        text not null,          -- cesta v úložišti "attachments"
   kind        text not null check (kind in ('image', 'video')),
+  repair      boolean default false,  -- fotka/video z opravy (migrace_09); null = příloha závady (obnova z koše)
   created_by  uuid references public.profiles on delete set null default auth.uid(),
   created_at  timestamptz not null default now()
 );
 create index attachments_defect_idx on public.attachments (defect_id);
+
+-- Označit jako opravené i s poznámkou a fotkami/videi z opravy najednou (soubory nahraje aplikace předem).
+-- Práva hlídá pravidlo „závady: úprava“ a trigger protect_defect (funkce běží s právy uživatele).
+create or replace function public.resolve_defect(p_defect uuid, p_note text, p_files jsonb default '[]')
+returns void
+language plpgsql set search_path = '' as $$
+declare
+  v_resolved timestamptz;
+begin
+  select d.resolved_at into v_resolved from public.defects d where d.id = p_defect;
+  if not found then
+    raise exception 'Závada neexistuje (možná byla smazána).';
+  end if;
+  if v_resolved is not null then
+    raise exception 'Závada už je označená jako opravená.';
+  end if;
+  if exists (select 1 from jsonb_array_elements(coalesce(p_files, '[]'::jsonb)) f
+             where (f ->> 'path') not like p_defect::text || '/%'
+                or (f ->> 'kind') is null or (f ->> 'kind') not in ('image', 'video')) then
+    raise exception 'Neplatná příloha opravy.';
+  end if;
+  update public.defects set resolved_at = now(), resolution_note = nullif(btrim(p_note), '')
+  where id = p_defect and resolved_at is null;
+  if not found then
+    raise exception 'Závadu může označit jako opravenou jen její autor, správce nebo administrátor.';
+  end if;
+  -- clock_timestamp: každá příloha vlastní čas, ať zůstane pořadí, v jakém je vozmistr přidal
+  insert into public.attachments (defect_id, path, kind, repair, created_at)
+  select p_defect, t.f ->> 'path', t.f ->> 'kind', true, clock_timestamp()
+  from jsonb_array_elements(coalesce(p_files, '[]'::jsonb)) with ordinality as t(f, n)
+  order by t.n;
+end $$;
+revoke execute on function public.resolve_defect(uuid, text, jsonb) from public, anon;
+grant execute on function public.resolve_defect(uuid, text, jsonb) to authenticated;
+
+-- Vrácení mezi neopravené smaže i přílohy opravy (jako poznámku k opravě; jdou do historie a koše)
+create or replace function public.drop_repair_attachments() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  delete from public.attachments a where a.defect_id = new.id and a.repair;
+  return null;
+end $$;
+drop trigger if exists defects_reopen on public.defects;
+create trigger defects_reopen after update of resolved_at on public.defects
+  for each row when (old.resolved_at is not null and new.resolved_at is null)
+  execute function public.drop_repair_attachments();
 
 create table public.comments (
   id          uuid primary key default gen_random_uuid(),
@@ -545,11 +592,13 @@ create policy "závady: mazání autor nebo správce" on public.defects
 
 create policy "přílohy: čtení" on public.attachments
   for select to authenticated using (public.is_member());
-create policy "přílohy: přidání autor závady nebo správce" on public.attachments
+create policy "přílohy: přidání autor závady, kdo ji opravil, nebo správce" on public.attachments
   for insert to authenticated with check (
     public.is_member() and created_by = auth.uid() and exists (
       select 1 from public.defects d
-      where d.id = defect_id and (public.is_admin() or (d.created_by = auth.uid() and d.resolved_at is null))));
+      where d.id = defect_id and (public.is_admin()
+        or (d.created_by = auth.uid() and d.resolved_at is null)
+        or (repair and d.resolved_at is not null and d.resolved_by = auth.uid()))));
 create policy "přílohy: mazání autor závady nebo správce" on public.attachments
   for delete to authenticated using (
     public.is_admin() or exists (

@@ -168,16 +168,18 @@ const byUrgency = (a, b) => b.open_count - a.open_count || a.number.localeCompar
 
 async function defectFeed(d) {
   const atts = state.attachments.filter((a) => a.defect_id === d.id);
+  const withUrls = (list) => Promise.all(list.map(async (a) => ({ ...a, url: await fileUrl(a.id) })));
   return {
     ...d,
     created_by_name: nameOf(d.created_by),
     resolved_by_name: d.resolved_by ? nameOf(d.resolved_by) : null,
     comment_count: state.comments.filter((c) => c.defect_id === d.id).length,
-    attachments: await Promise.all(atts.map(async (a) => ({ ...a, url: await fileUrl(a.id) }))),
+    attachments: await withUrls(atts.filter((a) => !a.repair)),
+    repair_attachments: await withUrls(atts.filter((a) => a.repair)),
   };
 }
 
-async function storeFiles(defectId, files, onProgress, tx = newTx()) {
+async function storeFiles(defectId, files, onProgress, tx = newTx(), repair = false) {
   let i = 0;
   for (const file of files) {
     onProgress?.(++i, files.length);
@@ -186,7 +188,7 @@ async function storeFiles(defectId, files, onProgress, tx = newTx()) {
     await idb('readwrite', (s) => s.put(blob, id));
     const att = {
       id, defect_id: defectId, path: id,
-      kind: file.type.startsWith('video/') ? 'video' : 'image',
+      kind: file.type.startsWith('video/') ? 'video' : 'image', repair,
       created_by: me().id, created_at: new Date().toISOString(),
     };
     state.attachments.push(att);
@@ -353,20 +355,26 @@ export const api = {
     removeRows(tx, 'defects', [d]);
     commit();
   },
-  async resolveDefect(id, note) {
+  async resolveDefect(id, note, files = [], onProgress) {
     const d = findDefect(id);
     if (!can.resolve(me(), d)) throw new Error('Závadu může označit jako opravenou jen její autor, správce nebo administrátor.');
+    if (d.resolved_at) throw new Error('Závada už je označená jako opravená.');
+    const tx = newTx();
     const old = { ...d };
     Object.assign(d, { resolved_at: new Date().toISOString(), resolved_by: me().id, resolution_note: note?.trim() || null });
-    audit(newTx(), 'defects', 'update', old, d);
+    audit(tx, 'defects', 'update', old, d);
+    await storeFiles(id, files, onProgress, tx, true);
     commit();
   },
+  // Vrácení mezi neopravené smaže i fotky k opravě (v databázi trigger defects_reopen)
   async reopenDefect(id) {
     const d = findDefect(id);
     if (!can.resolve(me(), d)) throw new Error('Závadu může vrátit jen její autor, správce nebo administrátor.');
+    const tx = newTx();
     const old = { ...d };
     Object.assign(d, { resolved_at: null, resolved_by: null, resolution_note: null });
-    audit(newTx(), 'defects', 'update', old, d);
+    audit(tx, 'defects', 'update', old, d);
+    removeRows(tx, 'attachments', state.attachments.filter((a) => a.defect_id === id && a.repair));
     commit();
   },
 

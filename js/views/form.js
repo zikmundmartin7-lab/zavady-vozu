@@ -1,69 +1,21 @@
 // Formulář nové závady / úpravy závady (číslo vozu, kód závady, popis, datum zjištění, fotky a videa).
 // Ve videonávodu (video/zadani-zavady-android.mp4) – vzhled, pořadí a texty neměnit bez souhlasu uživatele (README → návod, videonávody).
 
-import { html, useEffect, useMemo, useRef, useState } from '../../vendor/preact-htm.js';
+import { html, useEffect, useRef, useState } from '../../vendor/preact-htm.js';
 import { CODE_RE } from '../codes.js';
 import {
   MAX_VIDEO_MB, can, checkDigit, checkFoundAt, digitsOnly, foundAtOf, formatDateTime, formatNumber, isCompleteNumber,
   groupLabel, isValidCheckDigit, plural, toLocalInput,
 } from '../model.js';
 import {
-  CameraSteps, DefectVideoLink, Empty, ErrorBox, GroupName, Icon, Loading, TopBar, WagonNumber, goBack, praise,
-  requestCamera, useApp, useCameraPermission, useLoad,
+  DefectVideoLink, Empty, ErrorBox, FilePicker, GroupName, Icon, Loading, Preview, TopBar, WagonNumber, acceptMedia,
+  goBack, praise, useApp, useLoad, usePreviews,
 } from '../ui.js';
 import { CodePicker } from './codes.js';
 import { draft, takeSharedFiles } from '../draft.js';
 import { DictateButton, joinDictated } from '../dictation.js';
 import { outbox } from '../outbox.js';
 import { knownNumbers, suggestGroup } from '../series.js';
-
-function FilePicker({ onFiles }) {
-  const pick = (e) => {
-    onFiles([...e.currentTarget.files]);
-    e.currentTarget.value = '';
-  };
-  // Zakázaný fotoaparát: Vyfotit a Natočit by tiše nic neudělaly, tak to rovnou říct (jen Android)
-  const { toast } = useApp();
-  const [camera, setCamera] = useCameraPermission();
-  const [checking, setChecking] = useState(false);
-  async function recheck() {
-    setChecking(true);
-    try {
-      const r = await requestCamera();
-      setCamera(r === 'error' ? null : r);
-      if (r === 'granted') toast('Fotoaparát povolen.');
-    } finally {
-      setChecking(false);
-    }
-  }
-  return html`
-    ${camera === 'denied' && html`
-      <div class="warn camera-warn"><${Icon} name="alert" size=${16} />
-        <div>
-          <b>Fotoaparát je zakázaný</b> – Vyfotit a Natočit nepůjdou, z galerie ano. Povolíte ho takto:
-          <${CameraSteps} />
-          <button type="button" class="btn" disabled=${checking} onClick=${recheck}>
-            ${checking ? 'Ověřuji…' : 'Zkontrolovat znovu'}</button>
-        </div>
-      </div>`}
-    <div class="file-buttons">
-      <label class="btn"><${Icon} name="camera" /> Vyfotit
-        <input type="file" accept="image/*" capture="environment" hidden onChange=${pick} /></label>
-      <label class="btn"><${Icon} name="video" /> Natočit
-        <input type="file" accept="video/*" capture="environment" hidden onChange=${pick} /></label>
-      <label class="btn"><${Icon} name="image" /> Z galerie
-        <input type="file" accept="image/*,video/*" multiple hidden onChange=${pick} /></label>
-    </div>`;
-}
-
-function Preview({ kind, url, onRemove }) {
-  return html`
-    <div class="media-thumb">
-      ${kind === 'video' ? html`<video src=${url} preload="metadata" muted playsinline></video>` : html`<img src=${url} alt="" />`}
-      ${kind === 'video' && html`<span class="play"><${Icon} name="play" size=${22} /></span>`}
-      <button type="button" class="remove" onClick=${onRemove} aria-label="Odebrat"><${Icon} name="x" size=${16} /></button>
-    </div>`;
-}
 
 // Proč je skupina předvybraná (nebo jaká by podle čísla byla), ať ji vozmistr zkontroluje.
 function GroupHint({ s, groupId, groups }) {
@@ -207,22 +159,10 @@ export function DefectFormView({ editId, params }) {
     return () => { alive = false; };
   }, [number, found, groups.data]);
 
-  const previews = useMemo(() => files.map((f) => ({
-    file: f, url: URL.createObjectURL(f), kind: f.type.startsWith('video/') ? 'video' : 'image',
-  })), [files]);
-  useEffect(() => () => previews.forEach((p) => URL.revokeObjectURL(p.url)), [previews]);
+  const previews = usePreviews(files);
 
   function addFiles(list) {
-    const ok = [];
-    for (const f of list) {
-      if (!f.type.startsWith('image/') && !f.type.startsWith('video/')) {
-        toast(`Soubor ${f.name} není fotka ani video.`, { kind: 'error' });
-      } else if (f.type.startsWith('video/') && f.size > MAX_VIDEO_MB * 1024 * 1024) {
-        toast(`Video je větší než ${MAX_VIDEO_MB} MB – zkraťte ho nebo natočte v nižším rozlišení.`, { kind: 'error' });
-      } else {
-        ok.push(f);
-      }
-    }
+    const ok = acceptMedia(list, toast);
     setFiles((prev) => [...prev, ...ok]);
   }
 
