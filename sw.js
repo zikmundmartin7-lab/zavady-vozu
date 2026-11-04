@@ -1,6 +1,6 @@
 // Service worker: rychlé spuštění z paměti telefonu, offline záloha a push upozornění na nové závady.
 
-const CACHE = 'zavady-v68'; // zvýšit spolu s APP_VERSION v js/version.js
+const CACHE = 'zavady-v69'; // zvýšit spolu s APP_VERSION v js/version.js
 const PHOTO_CACHE = 'zavady-foto'; // fotky závad a obrázky katalogu (přežije novou verzi aplikace)
 const SHARED_CACHE = 'zavady-sdilene'; // fotky sdílené do aplikace z galerie, než si je vyzvedne formulář (js/draft.js)
 // Skener čísla vozu: neuronové sítě a ONNX runtime (asi 25 MB). V terénu nemusí být signál, proto se stáhnou
@@ -215,6 +215,10 @@ function outboxCount() {
 async function remindOutbox({ count, online = false, alert = false } = {}) {
   const n = count ?? await outboxCount();
   if (!n) return;
+  // Safari (iPhone) oznámení se stejnou značkou nenahradí, ale přidá další, a close() ho nezavře (simulátor 4. 11.)
+  // – když už jedno v liště je, stačí (i s jiným počtem). Android ho nahradí; stejné tiché znovu neukazovat.
+  const old = await self.registration.getNotifications({ tag: OUTBOX_TAG });
+  if (old.length && (SAFARI || (!alert && old.some((x) => x.data?.count === n && x.data?.online === online)))) return;
   const one = n === 1;
   await self.registration.showNotification(one ? 'Neodeslaná závada' : `Neodeslané závady: ${n}`, {
     body: online
@@ -225,7 +229,7 @@ async function remindOutbox({ count, online = false, alert = false } = {}) {
     tag: OUTBOX_TAG,
     silent: !alert,
     renotify: alert,
-    data: { url: '#/' },
+    data: { url: '#/', count: n, online },
   });
   // Aplikace mohla frontu mezitím odeslat a oznámení zavřít dřív, než se tohle ukázalo
   if (!(await outboxCount())) (await self.registration.getNotifications({ tag: OUTBOX_TAG })).forEach((x) => x.close());
