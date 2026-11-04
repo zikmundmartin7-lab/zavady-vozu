@@ -1,7 +1,7 @@
 // Zápis bez signálu: závady, které se nepodařilo odeslat, čekají v telefonu (IndexedDB)
 // a odešlou se samy, až bude připojení a aplikace bude otevřená. Fotky a videa se ukládají s nimi.
-// Se zavřenou aplikací se nic neodešle (přihlášení je jen v ní) – po návratu signálu je jen připomene
-// oznámení ze service workeru (remindWhenOnline, sw.js).
+// Se zavřenou aplikací se nic neodešle (přihlášení je jen v ní) – připomene je oznámení v liště, které se
+// ukáže při odchodu z aplikace a zmizí po odeslání (remindIfPending, sw.js).
 // Uložený záznam s fotkami se už nikdy nepřepisuje: Safari v iPhonu po zápisu Blobu přečteného z IndexedDB
 // zpět do databáze fotku ztratí (černý náhled) a další zápis selže (Výkaz vozů v27). Chyba odeslání a příznaky
 // se proto drží zvlášť v localStorage a fotky se odesílají z kopie bajtů.
@@ -102,16 +102,24 @@ export const outbox = {
 
 /**
  * Android (Chrome): po návratu signálu Chrome probudí service worker i u zamčeného telefonu a ten neodeslané
- * závady připomene oznámením (sw.js, událost sync). Safari (iPhone) to neumí – tam se připomenou jen
- * s jiným upozorněním z aplikace. Oznámení vyžaduje povolená upozornění.
+ * závady připomene oznámením se zvukem (sw.js, událost sync) – ale jen když Chrome mezitím neběžel; běžící
+ * Chrome na pozadí o návratu sítě neví (emulátor 4. 11.). Safari (iPhone) událost sync nemá.
  */
 export function remindWhenOnline() {
   navigator.serviceWorker?.ready.then((r) => r.sync?.register(REMIND_TAG)).catch(() => {});
 }
 
-/** Při odchodu z aplikace: čekají závady, které se mají odeslat (ne ty s chybou) → připomenout. */
+/**
+ * Při odchodu z aplikace: čekají závady, které se mají odeslat (ne ty s chybou) → hned tiché oznámení
+ * v liště (i bez signálu, zůstane do odeslání) a v Androidu navíc připomínka po návratu signálu.
+ * Oznámení ukáže service worker – stránku může telefon hned po odchodu zmrazit. Vyžaduje povolená upozornění.
+ */
 export async function remindIfPending() {
-  if ((await outbox.list()).some((i) => !i.error && !i.sent)) remindWhenOnline();
+  const count = (await outbox.list()).filter((i) => !i.error && !i.sent).length;
+  if (!count) return;
+  remindWhenOnline();
+  const r = await navigator.serviceWorker?.ready;
+  r?.active?.postMessage({ type: 'remind-outbox', count });
 }
 
 async function clearReminder() {
@@ -124,50 +132,56 @@ const unreadableText = (names, total) => (names.length === 1
   : `${names.length} z ${total} fotek a videí se v telefonu nepodařilo přečíst.`);
 
 let syncing = null;
+const SEND_LOCK = 'zavady-outbox-odesilani';
 
 /**
  * Odešle čekající závady. Při výpadku sítě skončí (zkusí se příště), jiné chyby (např. oprávnění)
  * si zapamatuje u položky, aby je uživatel viděl. Vrací počet odeslaných.
+ * Aplikace může být otevřená ve víc oknech (na ploše i v kartě Chromu) a každé by frontu poslalo samo –
+ * stejná závada by vznikla dvakrát (emulátor 4. 11.). Proto odesílá vždy jen jedno okno: když frontu
+ * právě posílá jiné, tohle nic nedělá a zkusí to příště (to už najde odeslané).
  */
 export function syncOutbox(api) {
-  syncing ??= (async () => {
-    let sent = 0;
-    try {
-      for (const item of await outbox.list()) {
-        try {
-          // odesláno už dřív, jen se nepodařilo smazat z telefonu – podruhé neposílat
-          if (item.sent) { await outbox.remove(item.id); continue; }
-          // Fotky se posílají z kopie bajtů; nečitelné se zjistí dřív, než na serveru vznikne závada
-          const files = [];
-          const unreadable = [];
-          for (const f of item.files) {
-            try { files.push(new File([await f.data.arrayBuffer()], f.name, { type: f.type })); }
-            catch { unreadable.push(f.name); }
-          }
-          if (unreadable.length && !item.skip) {
-            outbox.setError(item.id, unreadableText(unreadable, item.files.length), { unreadable: unreadable.length });
-            continue;
-          }
-          let wagonId = item.wagon_id;
-          if (!wagonId) {
-            const w = (await api.findWagon(item.number)) ?? (await api.createWagon(item.number, item.group_id));
-            wagonId = w.id;
-          }
-          await api.createDefect({
-            wagon_id: wagonId, description: item.description, found_at: item.found_at, defect_code: item.defect_code,
-          }, files);
-          setState(item.id, { sent: true });
-          sent++;
-          await outbox.remove(item.id);
-        } catch (e) {
-          if (e.network || !navigator.onLine) break;
-          outbox.setError(item.id, e.message);
-        }
-      }
-    } finally {
-      syncing = null;
-    }
-    return sent;
-  })();
+  syncing ??= (navigator.locks
+    ? navigator.locks.request(SEND_LOCK, { ifAvailable: true }, (lock) => (lock ? sendAll(api) : 0))
+    : sendAll(api)
+  ).finally(() => { syncing = null; });
   return syncing;
+}
+
+async function sendAll(api) {
+  state = null; // příznaky (odesláno, chyby) mohlo mezitím změnit jiné okno – načíst znovu z localStorage
+  let sent = 0;
+  for (const item of await outbox.list()) {
+    try {
+      // odesláno už dřív, jen se nepodařilo smazat z telefonu – podruhé neposílat
+      if (item.sent) { await outbox.remove(item.id); continue; }
+      // Fotky se posílají z kopie bajtů; nečitelné se zjistí dřív, než na serveru vznikne závada
+      const files = [];
+      const unreadable = [];
+      for (const f of item.files) {
+        try { files.push(new File([await f.data.arrayBuffer()], f.name, { type: f.type })); }
+        catch { unreadable.push(f.name); }
+      }
+      if (unreadable.length && !item.skip) {
+        outbox.setError(item.id, unreadableText(unreadable, item.files.length), { unreadable: unreadable.length });
+        continue;
+      }
+      let wagonId = item.wagon_id;
+      if (!wagonId) {
+        const w = (await api.findWagon(item.number)) ?? (await api.createWagon(item.number, item.group_id));
+        wagonId = w.id;
+      }
+      await api.createDefect({
+        wagon_id: wagonId, description: item.description, found_at: item.found_at, defect_code: item.defect_code,
+      }, files);
+      setState(item.id, { sent: true });
+      sent++;
+      await outbox.remove(item.id);
+    } catch (e) {
+      if (e.network || !navigator.onLine) break;
+      outbox.setError(item.id, e.message);
+    }
+  }
+  return sent;
 }

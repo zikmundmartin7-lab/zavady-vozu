@@ -1,6 +1,6 @@
 // Service worker: rychlé spuštění z paměti telefonu, offline záloha a push upozornění na nové závady.
 
-const CACHE = 'zavady-v67'; // zvýšit spolu s APP_VERSION v js/version.js
+const CACHE = 'zavady-v68'; // zvýšit spolu s APP_VERSION v js/version.js
 const PHOTO_CACHE = 'zavady-foto'; // fotky závad a obrázky katalogu (přežije novou verzi aplikace)
 const SHARED_CACHE = 'zavady-sdilene'; // fotky sdílené do aplikace z galerie, než si je vyzvedne formulář (js/draft.js)
 // Skener čísla vozu: neuronové sítě a ONNX runtime (asi 25 MB). V terénu nemusí být signál, proto se stáhnou
@@ -47,9 +47,12 @@ self.addEventListener('install', (e) => {
   })());
 });
 
-// Aplikace se ptá na číslo verze (Můj účet → „Verze aplikace“)
+// Aplikace se ptá na číslo verze (Můj účet → „Verze aplikace“). Při odchodu z aplikace s neodeslanými
+// závadami posílá jejich počet (js/outbox.js remindIfPending) – oznámení ukáže service worker, stránku může
+// telefon hned po odchodu zmrazit.
 self.addEventListener('message', (e) => {
   if (e.data?.type === 'version') e.ports[0]?.postMessage(CACHE);
+  if (e.data?.type === 'remind-outbox') e.waitUntil(remindOutbox({ count: e.data.count }).catch(() => {}));
 });
 
 // Po aktivaci smazat starou verzi a otevřeným oknům říct, že je k dispozici nová. Jen vlastní zásoby
@@ -179,8 +182,8 @@ self.addEventListener('push', (e) => {
       tag: data.tag,
       data: { url: data.url || '#/' },
     });
-    // iPhone nemá událost sync – upozornění z aplikace je jediná chvíle, kdy jde neodeslané závady připomenout
-    await remindOutbox().catch(() => {});
+    // iPhone nemá událost sync – upozornění z aplikace je jistá chvíle se signálem (zvuk už mělo upozornění)
+    await remindOutbox({ online: true }).catch(() => {});
   })());
 });
 
@@ -206,21 +209,33 @@ function outboxCount() {
   });
 }
 
-async function remindOutbox() {
-  const n = await outboxCount();
+// Oznámení s tagem OUTBOX_TAG zůstane v liště, dokud se fronta nevyprázdní (zavře ho js/outbox.js).
+// count: počet od aplikace (bez závad s chybou), jinak vše ve frontě. online: signál je (sync, push).
+// alert: zvuk a vibrace i tehdy, když už tiché oznámení z odchodu z aplikace v liště je.
+async function remindOutbox({ count, online = false, alert = false } = {}) {
+  const n = count ?? await outboxCount();
   if (!n) return;
-  await self.registration.showNotification(n === 1 ? 'Neodeslaná závada' : `Neodeslané závady: ${n}`, {
-    body: `${n === 1 ? 'Je zapsaná' : 'Jsou zapsané'} bez signálu jen v telefonu. Otevřete aplikaci – odešle se sama.`,
+  const one = n === 1;
+  await self.registration.showNotification(one ? 'Neodeslaná závada' : `Neodeslané závady: ${n}`, {
+    body: online
+      ? `Signál je zpět. Otevřete aplikaci – ${one ? 'odešle se sama' : 'odešlou se samy'}.`
+      : `${one ? 'Je zapsaná' : 'Jsou zapsané'} jen v telefonu. Otevřete aplikaci se signálem – ${one ? 'odešle se sama' : 'odešlou se samy'}.`,
     icon: 'icons/icon-192.png?v=2',
     badge: 'icons/badge-96.png?v=2',
     tag: OUTBOX_TAG,
+    silent: !alert,
+    renotify: alert,
     data: { url: '#/' },
   });
+  // Aplikace mohla frontu mezitím odeslat a oznámení zavřít dřív, než se tohle ukázalo
+  if (!(await outboxCount())) (await self.registration.getNotifications({ tag: OUTBOX_TAG })).forEach((x) => x.close());
 }
 
 // Android (Chrome): po návratu signálu Chrome probudí service worker i u zamčeného telefonu. Vzhůru ale prohlížeč
 // drží jen do spuštění události, ne do jejího konce – Android ho pak během pár sekund uspí a čekající kód
 // doběhne až po otevření aplikace. Proto nic nečekat: hned spočítat frontu a ukázat oznámení.
+// Spolehlivé to není: Chrome, který zůstal běžet na pozadí, o návratu sítě neví a událost nespustí (emulátor
+// 4. 11.) – proto tiché oznámení už při odchodu z aplikace a tady jen znovu se zvukem.
 self.addEventListener('sync', (e) => {
   if (e.tag !== OUTBOX_TAG) return;
   e.waitUntil((async () => {
@@ -229,7 +244,7 @@ self.addEventListener('sync', (e) => {
     if (wins.some((w) => w.visibilityState === 'visible')) return; // otevřená aplikace odešle sama
     // Chrome hlásí signál i tam, kde data neprojdou: krátce ověřit. Chyba → Chrome událost zopakuje (za 5 a 15 minut).
     await fetch(new URL('js/version.js', self.registration.scope), { cache: 'no-store', signal: AbortSignal.timeout(5000) });
-    await remindOutbox().catch(() => {}); // upozornění nepovolená – nic
+    await remindOutbox({ online: true, alert: true }).catch(() => {}); // upozornění nepovolená – nic
   })());
 });
 

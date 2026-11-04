@@ -221,7 +221,7 @@ function App() {
     const fetchAllData = () => navigator.onLine && prefetch();
     const onOnline = () => { send(); fetchAllData(); };
     const onVisible = () => {
-      // odchod z aplikace s neodeslanými závadami: Android je po návratu signálu připomene oznámením
+      // odchod z aplikace s neodeslanými závadami: připomenout je oznámením v liště (do odeslání)
       if (document.visibilityState !== 'visible') { remindIfPending().catch(() => {}); return; }
       send();
       if (Date.now() - lastPrefetchAt() > 15 * 60000) fetchAllData();
