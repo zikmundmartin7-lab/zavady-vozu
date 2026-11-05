@@ -121,5 +121,6 @@ server/                                   noční zálohy a pravidelné exporty 
 tools/katalog_vsp9.py                     převod katalogu závad z PDF přílohy 9 VSP (výstup do private/, mimo GitHub)
 navod.html                                návod k instalaci, Android i iPhone (QR: tools/qr.py)
 tools/ikony.py, tools/vapid.html          ikony aplikace, generátor klíčů
+models/, vendor/                          sítě skeneru a cizí knihovny – licence v LICENCE-TRETICH-STRAN.md
 .github/workflows/keep-alive.yml          udržení projektu Supabase vzhůru
 ```
