@@ -78,9 +78,13 @@ function excelDate(d) {
   return local / 86400000 + 25569;
 }
 
-function cell(ref, value, header) {
+function cell(ref, value, header, links) {
   if (value === null || value === undefined || value === '') return '';
   if (header) return `<c r="${ref}" t="inlineStr" s="1"><is><t>${esc(value)}</t></is></c>`;
+  if (typeof value === 'object' && value.link) { // { text, link } (řetězce mají vlastní String.prototype.link)
+    links.push({ ref, url: value.link });
+    return `<c r="${ref}" t="inlineStr" s="4"><is><t>${esc(value.text)}</t></is></c>`;
+  }
   if (value instanceof Date) return `<c r="${ref}" s="2"><v>${excelDate(value)}</v></c>`;
   if (typeof value === 'number') return `<c r="${ref}"><v>${value}</v></c>`;
   return `<c r="${ref}" t="inlineStr" s="3"><is><t xml:space="preserve">${esc(value)}</t></is></c>`;
@@ -100,21 +104,29 @@ function sheetNames(names) {
 
 function sheetXml(columns, rows) {
   const lastCol = colName(columns.length - 1);
+  const links = [];
   const lines = [columns.map((c, i) => cell(`${colName(i)}1`, c.header, true)).join('')]
-    .concat(rows.map((r, ri) => columns.map((c, ci) => cell(`${colName(ci)}${ri + 2}`, c.value(r), false)).join('')))
+    .concat(rows.map((r, ri) => columns.map((c, ci) => cell(`${colName(ci)}${ri + 2}`, c.value(r), false, links)).join('')))
     .map((cells, i) => `<row r="${i + 1}">${cells}</row>`);
   const cols = columns.map((c, i) => `<col min="${i + 1}" max="${i + 1}" width="${c.width ?? 16}" customWidth="1"/>`).join('');
   const range = `$A$1:$${lastCol}$${Math.max(rows.length + 1, 1)}`;
   const xml = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-    + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+    + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
     + '<sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'
     + `<cols>${cols}</cols><sheetData>${lines.join('')}</sheetData>`
-    + `<autoFilter ref="${range.replace(/\$/g, '')}"/></worksheet>`;
-  return { xml, range };
+    + `<autoFilter ref="${range.replace(/\$/g, '')}"/>`
+    + (links.length ? `<hyperlinks>${links.map((l, i) => `<hyperlink ref="${l.ref}" r:id="rId${i + 1}"/>`).join('')}</hyperlinks>` : '')
+    + '</worksheet>';
+  // Odkazy listu (adresy jsou ve vlastním souboru _rels, buňka nese jen text)
+  const rels = links.length ? '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+    + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+    + links.map((l, i) => `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="${esc(l.url)}" TargetMode="External"/>`).join('')
+    + '</Relationships>' : null;
+  return { xml, range, rels };
 }
 
 /**
- * sheets: [{ name, columns: [{ header, width?, value: (row) => string | number | Date }], rows }]
+ * sheets: [{ name, columns: [{ header, width?, value: (row) => string | number | Date | { text, link } }], rows }]
  * Každý list má tučnou hlavičku, filtr a ukotvený první řádek. Vrací Blob se souborem .xlsx.
  */
 export function buildXlsx(sheets) {
@@ -124,15 +136,17 @@ export function buildXlsx(sheets) {
   const styles = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
     + '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
     + '<numFmts count="1"><numFmt numFmtId="164" formatCode="d\\.m\\.yyyy\\ h:mm"/></numFmts>'
-    + '<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>'
+    + '<fonts count="3"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font>'
+    + '<font><u/><sz val="11"/><color rgb="FF0563C1"/><name val="Calibri"/></font></fonts>'
     + '<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>'
     + '<fill><patternFill patternType="solid"><fgColor rgb="FFE8EFF8"/></patternFill></fill></fills>'
     + '<borders count="1"><border/></borders>'
     + '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
-    + '<cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+    + '<cellXfs count="5"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
     + '<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/>'
     + '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
     + '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>'
+    + '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment vertical="top"/></xf>'
     + '</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
   const idx = [...Array(n).keys()];
   const quoted = (name) => `'${esc(name).replace(/'/g, "''")}'`;
@@ -160,6 +174,7 @@ export function buildXlsx(sheets) {
       + `<Relationship Id="rId${n + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`
       + '</Relationships>'],
     ...idx.map((i) => [`xl/worksheets/sheet${i + 1}.xml`, built[i].xml]),
+    ...idx.filter((i) => built[i].rels).map((i) => [`xl/worksheets/_rels/sheet${i + 1}.xml.rels`, built[i].rels]),
     ['xl/styles.xml', styles],
   ];
   return zip(files.map(([name, xml]) => ({ name, data: enc.encode(xml) })));

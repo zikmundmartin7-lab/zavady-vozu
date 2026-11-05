@@ -200,7 +200,14 @@ COLUMNS = [
     ('Číslo vozu', 18), ('Skupina', 16), ('Kód závady', 11), ('Konstrukční část (dle kódu)', 34),
     ('Popis závady', 50), ('Zjištěno', 16), ('Vložil(a)', 18), ('Vloženo', 16), ('Stav', 12),
     ('Opraveno', 16), ('Opravil(a)', 18), ('Poznámka k opravě', 30), ('Komentářů', 11), ('Fotek a videí', 13),
+    ('Odkaz na fotky a videa', 22),
 ]
+LINK_COLUMN = len(COLUMNS)  # poslední sloupec: adresa stránky s fotkami → odkaz „Otevřít“ (fill_sheet)
+
+
+def photos_url(defect_id):
+    """Stránka s fotkami a videi závady i pro lidi bez účtu (fotky.html + Edge Function „fotky“)."""
+    return f'{APP_URL.rstrip("/")}/fotky.html?z={defect_id}'
 
 
 def fmt_number(n):
@@ -239,6 +246,7 @@ def load_defects(report, group_ids=None):
             local_dt(d['found_at'] or d['created_at']), d['created_by_name'] or '', local_dt(d['created_at']),
             'Opraveno' if d['resolved_at'] else 'Neopravená', local_dt(d['resolved_at']), d['resolved_by_name'] or '',
             d['resolution_note'] or '', d['comment_count'] or 0, att.get(d['id'], 0),
+            photos_url(d['id']) if att.get(d['id']) else '',
         ]))
     rows.sort(key=lambda r: r[1][5] or datetime.min, reverse=True)
     return rows, groups
@@ -268,7 +276,11 @@ def fill_sheet(ws, rows):
         ws.column_dimensions[get_column_letter(i)].width = width
     for row in ws.iter_rows(min_row=2):
         for cell in row:
-            if isinstance(cell.value, datetime):
+            if cell.column == LINK_COLUMN and cell.value:
+                cell.hyperlink, cell.value = cell.value, 'Otevřít'
+                cell.font = Font(color='0563C1', underline='single')
+                cell.alignment = Alignment(vertical='top')
+            elif isinstance(cell.value, datetime):
                 cell.number_format = 'd.m.yyyy h:mm'
             elif isinstance(cell.value, str):
                 cell.alignment = Alignment(vertical='top', wrap_text=True)
@@ -314,7 +326,8 @@ def send_export(to, report, group_ids=None):
     open_count = sum(1 for _, r in rows if r[8] == 'Neopravená')
     text = (f'Dobrý den,\n\nv příloze je přehled: {label}{which} ke dni {today:%-d. %-m. %Y %-H:%M}.\n'
             f'Počet závad v přehledu: {len(rows)} (z toho neopravených: {open_count}).\n'
-            'V souboru je list se všemi závadami a k tomu list pro každou skupinu vozů.\n\n'
+            'V souboru je list se všemi závadami a k tomu list pro každou skupinu vozů.\n'
+            'Odkaz „Otevřít“ ve sloupci Odkaz na fotky a videa ukáže fotky a videa závady i bez účtu v aplikaci.\n\n'
             f'Aplikace: {APP_URL}\n\nTento e-mail posílá automaticky aplikace Závady vozů. '
             'Nastavení pravidelných exportů: Můj účet → Pravidelné exporty na e-mail.\n')
     send_mail(to, f'Závady vozů – {label}{which} ({today:%-d. %-m. %Y})', text, (name, build_xlsx(rows, groups, group_ids)))

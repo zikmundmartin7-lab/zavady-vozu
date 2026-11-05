@@ -8,8 +8,9 @@
   <meta name="theme-color" content="#1f4e8c" />
   <link rel="icon" href="icons/icon.svg?v=2" type="image/svg+xml" />
   <link rel="stylesheet" href="css/app.css" />
-  <!-- Fotky a videa jedné závady i pro lidi bez účtu (odkaz „Fotky v plné kvalitě ke stažení“ ve zprávě
-       do WhatsAppu). Data dává Edge Function „fotky“ (supabase/functions/fotky) podle ID závady v adrese. -->
+  <!-- Fotky a videa jedné závady i pro lidi bez účtu: odkaz „Otevřít“ v exportu do Excelu (od verze 70) a odkaz
+       „Fotky v plné kvalitě ke stažení“ ve starších zprávách do WhatsAppu (verze 44–45). Data dává Edge Function
+       „fotky“ (supabase/functions/fotky) podle ID závady v adrese. -->
   <style>
     .photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 12px; }
     .photo { margin: 0; background: var(--surface); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
@@ -42,14 +43,15 @@
 
   <script type="module">
     // Záměrně bez importu js/config.js: starší service worker v telefonu s aplikací by vrátil starou verzi
-    // souboru (bez PHOTOS_FUNCTION) a stránka by se nenačetla (28. 10.). Od verze 46 sem vedou jen odkazy ze
-    // starších zpráv ve WhatsAppu (nové zprávy odkaz nemají).
+    // souboru (bez PHOTOS_FUNCTION) a stránka by se nenačetla (28. 10.). Sem vedou odkazy z exportu do Excelu
+    // a ze starších zpráv ve WhatsAppu (zprávy od verze 46 odkaz nemají).
     const SUPABASE_URL = 'https://tfbirhsjavejkyscmacw.supabase.co';
     const PHOTOS_FUNCTION = 'smooth-endpoint'; // Edge Function „fotky“; prázdné = stahování bez účtu vypnuté
 
     const $ = (id) => document.getElementById(id);
     const id = new URLSearchParams(location.search).get('z') ?? '';
     const ios = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const desktop = !ios && !matchMedia('(pointer: coarse)').matches; // počítač (odkaz z Excelu)
     $('app').href = `./#/zavada/${encodeURIComponent(id)}`;
 
     const fail = (msg) => { $('status').className = 'error-box'; $('status').textContent = msg; };
@@ -121,7 +123,9 @@
       });
       $('hint').textContent = ios
         ? 'Na iPhonu je nejjednodušší Sdílet fotky → Uložit obrázky (do aplikace Fotky).'
-        : 'Soubory se uloží do Stažených souborů, v galerii je najdete v albu Download. Klepnutím na fotku ji zvětšíte.';
+        : desktop
+          ? 'Soubory se uloží do složky Stažené soubory. Kliknutím na fotku ji otevřete v plné velikosti.'
+          : 'Soubory se uloží do Stažených souborů, v galerii je najdete v albu Download. Klepnutím na fotku ji zvětšíte.';
       $('status').hidden = true;
       $('box').hidden = false;
 

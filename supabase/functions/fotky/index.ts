@@ -1,10 +1,10 @@
 // Supabase Edge Function „fotky“ (v Supabase se jmenuje smooth-endpoint): fotky a videa jedné závady i pro
-// lidi bez účtu (souběh se skupinou na WhatsAppu – odkaz „Fotky v plné kvalitě ke stažení“ ve zprávě vede
-// na stránku fotky.html).
+// lidi bez účtu na stránce fotky.html. Vedou sem odkazy „Otevřít“ z exportu do Excelu (od verze 70, export
+// chodí e-mailem i lidem bez účtu) a „Fotky v plné kvalitě ke stažení“ ze starších zpráv do WhatsAppu.
 //   GET ?z=<id závady>  →  { number, found_at, files: [{ kind, url }] }
 // Klíčem je náhodné ID závady (UUID, nedá se uhodnout): kdo má odkaz, uvidí číslo vozu a přílohy té jedné
 // závady, nic jiného (popis má ve zprávě, komentáře ani ostatní závady ne). Odkazy na soubory platí hodinu.
-// Konec souběhu: funkci v Supabase smazat → odkazy přestanou fungovat (a v js/config.js PHOTOS_FUNCTION = '').
+// Smazáním funkce v Supabase přestanou fungovat všechny tyto odkazy (i v už rozeslaných exportech).
 //
 // Nastavení funkce: Verify JWT vypnout (volá se bez přihlášení).
 // SUPABASE_URL a SUPABASE_SERVICE_ROLE_KEY doplňuje Supabase sám.

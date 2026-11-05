@@ -18,6 +18,8 @@ function savedFilters() {
   try { return { ...FILTERS, ...JSON.parse(sessionStorage.getItem(FILTERS_KEY)) }; } catch { return FILTERS; }
 }
 
+const photosUrl = (id) => new URL(`fotky.html?z=${encodeURIComponent(id)}`, location.href).href;
+
 /**
  * Export seznamu závad do Excelu (stejné sloupce jako pravidelný export ze serveru).
  * První list obsahuje všechny závady, pak má každá skupina vozů vlastní list (je-li jich víc).
@@ -42,6 +44,8 @@ export async function exportDefects(rows, catalog, label, groups = [], chosen = 
     { header: 'Poznámka k opravě', width: 30, value: (r) => r.resolution_note ?? '' },
     { header: 'Komentářů', width: 11, value: (r) => r.comment_count ?? 0 },
     { header: 'Fotek a videí', width: 13, value: (r) => r.attachment_count ?? 0 },
+    // Stránka s fotkami a videi závady i pro lidi bez účtu (fotky.html + Edge Function „fotky“, přání uživatele 5. 11.)
+    { header: 'Odkaz na fotky a videa', width: 22, value: (r) => (r.attachment_count ? { text: 'Otevřít', link: photosUrl(r.id) } : '') },
   ];
   const present = chosen.length ? chosen : groups.filter((g) => rows.some((r) => r.group_id === g.id));
   const sheets = present.length === 1
