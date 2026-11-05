@@ -8,8 +8,8 @@ import {
   groupLabel, isValidCheckDigit, plural, toLocalInput,
 } from '../model.js';
 import {
-  DefectVideoLink, Empty, ErrorBox, FilePicker, GroupName, Icon, Loading, Preview, TopBar, WagonNumber, acceptMedia,
-  goBack, praise, useApp, useLoad, usePreviews,
+  DefectVideoLink, Empty, ErrorBox, FilePicker, GroupName, Icon, Loading, Preview, ShrinkingVideo, TopBar, WagonNumber,
+  goBack, praise, useAddMedia, useApp, useLoad, usePreviews,
 } from '../ui.js';
 import { CodePicker } from './codes.js';
 import { draft, takeSharedFiles } from '../draft.js';
@@ -160,11 +160,7 @@ export function DefectFormView({ editId, params }) {
   }, [number, found, groups.data]);
 
   const previews = usePreviews(files);
-
-  function addFiles(list) {
-    const ok = acceptMedia(list, toast);
-    setFiles((prev) => [...prev, ...ok]);
-  }
+  const [addFiles, shrinking] = useAddMedia(setFiles);
 
   async function submit(e) {
     e.preventDefault();
@@ -172,6 +168,7 @@ export function DefectFormView({ editId, params }) {
     let wagon = fixedWagon.data;
     let found_at;
     try {
+      if (shrinking) throw new Error('Počkejte, až se video zmenší (nebo převod zrušte).');
       if (!fixedWagonId) {
         if (!isCompleteNumber(number)) throw new Error('Zadejte celé číslo vozu (12 číslic).');
         if (!isValidCheckDigit(number)
@@ -318,7 +315,8 @@ export function DefectFormView({ editId, params }) {
               ${previews.map((p, i) => html`<${Preview} key=${p.url} kind=${p.kind} url=${p.url}
                 onRemove=${() => setFiles(files.filter((_, j) => j !== i))} />`)}
             </div>`}
-          <div class="hint">Fotky se automaticky zmenší. Video max. ${MAX_VIDEO_MB} MB (cca 20–30 s z telefonu).</div>
+          <${ShrinkingVideo} state=${shrinking} />
+          <div class="hint">Fotky se automaticky zmenší, video nad ${MAX_VIDEO_MB} MB také (zhruba do 5 minut).</div>
         </section>
 
         <${ErrorBox} error=${error} />

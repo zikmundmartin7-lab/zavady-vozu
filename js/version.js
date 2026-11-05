@@ -1,2 +1,2 @@
-// Verze aplikace, kterou má tento kód. Při každé nové verzi zvýšit spolu s CACHE v sw.js ('zavady-v72').
-export const APP_VERSION = 72;
+// Verze aplikace, kterou má tento kód. Při každé nové verzi zvýšit spolu s CACHE v sw.js ('zavady-v73').
+export const APP_VERSION = 73;

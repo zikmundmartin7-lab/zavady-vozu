@@ -57,7 +57,8 @@ export function prefetchAll(api) {
 
 export const OCR_CACHE = 'zavady-ocr-v1';
 const OCR_FILES = ['vendor/ort/ort.wasm.min.mjs', 'vendor/ort/ort-wasm-simd-threaded.mjs',
-  'vendor/ort/ort-wasm-simd-threaded.wasm', 'models/det.onnx', 'models/rec_latin.onnx', 'models/rec_latin_dict.txt']
+  'vendor/ort/ort-wasm-simd-threaded.wasm', 'models/det.onnx', 'models/rec_latin.onnx', 'models/rec_latin_dict.txt',
+  'vendor/mediabunny-1.65.2.min.mjs'] // převod velkého videa (js/video.js)
   .map((u) => new URL(`../${u}`, import.meta.url).href);
 
 async function missingOcr() {

@@ -522,6 +522,7 @@ export function DefectCard({ d, wagon = null, showComments = true, isNew = false
   const [note, setNote] = useState('');
   const [repairFiles, setRepairFiles] = useState([]); // fotky a videa z opravy (formulář Označit jako opravené)
   const repairPreviews = usePreviews(repairFiles);
+  const [addRepairFiles, shrinking] = useAddMedia(setRepairFiles);
   const [progress, setProgress] = useState('');
   const [busy, setBusy] = useState(false);
   const catalog = useCatalog();
@@ -545,9 +546,12 @@ export function DefectCard({ d, wagon = null, showComments = true, isNew = false
     }
   }
 
-  const resolve = () => run(() => api.resolveDefect(d.id, note, repairFiles,
-    (i, n) => setProgress(`Nahrávám přílohu ${i}/${n}…`)), 'Závada označena jako opravená.')
-    .then((ok) => { setProgress(''); if (ok) { setResolving(false); setNote(''); setRepairFiles([]); } });
+  const resolve = () => {
+    if (shrinking) { toast('Počkejte, až se video zmenší (nebo převod zrušte).', { kind: 'error' }); return; }
+    run(() => api.resolveDefect(d.id, note, repairFiles,
+      (i, n) => setProgress(`Nahrávám přílohu ${i}/${n}…`)), 'Závada označena jako opravená.')
+      .then((ok) => { setProgress(''); if (ok) { setResolving(false); setNote(''); setRepairFiles([]); } });
+  };
   const fileName = (what) => [what, (wagon?.number ?? d.number ?? '').slice(-4)].filter(Boolean).join('-');
   const reopen = () => confirm('Vrátit závadu mezi neopravené?')
     && run(() => api.reopenDefect(d.id), 'Závada vrácena mezi aktivní.');
@@ -588,13 +592,14 @@ export function DefectCard({ d, wagon = null, showComments = true, isNew = false
         <div class="resolve-form">
           <textarea rows="2" placeholder="Poznámka k opravě (nepovinné)" value=${note}
             onInput=${(e) => setNote(e.currentTarget.value)}></textarea>
-          <${FilePicker} onFiles=${(list) => setRepairFiles((prev) => [...prev, ...acceptMedia(list, toast)])} />
+          <${FilePicker} onFiles=${addRepairFiles} />
           ${repairPreviews.length > 0 && html`
             <div class="media-grid">
               ${repairPreviews.map((p, i) => html`<${Preview} key=${p.url} kind=${p.kind} url=${p.url}
                 onRemove=${() => setRepairFiles(repairFiles.filter((_, j) => j !== i))} />`)}
             </div>`}
-          <div class="hint">Fotky a videa z opravy (nepovinné). Fotky se automaticky zmenší, video max. ${MAX_VIDEO_MB} MB.</div>
+          <${ShrinkingVideo} state=${shrinking} />
+          <div class="hint">Fotky a videa z opravy (nepovinné). Fotky se automaticky zmenší, video nad ${MAX_VIDEO_MB} MB také.</div>
           <div class="row">
             <button class="btn btn-ok" disabled=${busy} onClick=${resolve}>
               ${progress || html`<${Icon} name="check" /> Potvrdit opravu`}</button>
@@ -642,33 +647,90 @@ export function defectShareText(d, w) {
   return `*Vůz ${formatNumber(w.number)}*\n${d.description.trim()}`;
 }
 
-// Fotky závady jako soubory pro sdílení (videa ne – bývají velká). Fotky z paměti telefonu jsou hned.
-async function photoFiles(d, w) {
-  const out = [];
-  const photos = (d.attachments ?? []).filter((a) => a.kind !== 'video' && a.url);
-  for (const a of photos) {
+// Fotky a videa závady jako soubory pro sdílení. Fotky z paměti telefonu jsou hned, video (až desítky MB)
+// se stahuje – onBytes(staženo, celkem) ukazuje okno sdílení. Vrací { files, missing }: missing = počet
+// příloh, které se nepodařilo stáhnout nebo připravit (sdílí se bez nich).
+async function mediaFiles(d, w, onBytes) {
+  const files = [];
+  let missing = 0;
+  for (const a of (d.attachments ?? []).filter((x) => x.url)) {
     try {
-      out.push(shareFile(await (await fetch(a.url)).blob(), w, out.length));
-    } catch { /* fotku se nepodařilo stáhnout – sdílí se bez ní */ }
+      const res = await fetch(a.url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const video = a.kind === 'video';
+      const blob = video ? await shareableVideo(await readBlob(res, onBytes)) : await res.blob();
+      files.push(shareFile(blob, w, files.length, video));
+    } catch { missing++; }
   }
-  return out;
+  return { files, missing };
 }
 
-function shareFile(blob, w, i) {
-  const type = blob.type || 'image/jpeg';
-  const ext = type.split('/')[1]?.replace('jpeg', 'jpg') || 'jpg';
+// Stažení s průběhem (velikost hlásí úložiště v Content-Length)
+async function readBlob(res, onBytes) {
+  const total = Number(res.headers.get('content-length')) || 0;
+  if (!res.body || !total) return res.blob();
+  const reader = res.body.getReader();
+  const parts = [];
+  let loaded = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    parts.push(value);
+    loaded += value.length;
+    onBytes?.(loaded, total);
+  }
+  return new Blob(parts, { type: res.headers.get('content-type') ?? '' });
+}
+
+// Chrome v Androidu sdílí z videí jen MP4, WebM, MPEG a Ogg – video z iPhonu (.mov) se přebalí do MP4
+const ANDROID_VIDEO = ['video/mp4', 'video/webm', 'video/mpeg', 'video/ogg'];
+async function shareableVideo(blob) {
+  if (!isAndroid() || ANDROID_VIDEO.includes(blob.type)) return blob;
+  const { toMp4 } = await import('./video.js');
+  return toMp4(blob);
+}
+
+const EXT = { 'image/jpeg': 'jpg', 'video/quicktime': 'mov' };
+function shareFile(blob, w, i, video = false) {
+  const type = blob.type || (video ? 'video/mp4' : 'image/jpeg');
+  const ext = EXT[type] ?? type.split('/')[1] ?? 'jpg';
   return new File([blob], `zavada-${w.number.slice(-4)}-${i + 1}.${ext}`, { type });
 }
 
 const shareable = (files) => (files?.length && navigator.canShare?.({ files }) ? files : []);
+const isVideo = (f) => f.type.startsWith('video/');
+
+// Popis příloh: „2 fotky + video“ (do závorky), s acc = true „2 fotky a video“, „fotku a video“ (Poslat …)
+function mediaLabel(files, acc = false) {
+  const v = files.filter(isVideo).length;
+  const p = files.length - v;
+  const parts = [];
+  if (p) parts.push(p === 1 ? (acc ? 'fotku' : 'fotka') : plural(p, 'fotka', 'fotky', 'fotek'));
+  if (v) parts.push(v === 1 ? 'video' : plural(v, 'video', 'videa', 'videí'));
+  return parts.join(acc ? ' a ' : ' + ');
+}
+
+// Chrome v Androidu sdílí najednou nejvýš 10 souborů a dohromady 50 MiB, jinak sdílení odmítne – přílohy se
+// rozdělí do skupin, které se vejdou (fotky s videem obvykle do jedné)
+const SHARE_MAX_FILES = 10;
+const SHARE_MAX_BYTES = 50 * 1024 * 1024;
+function shareBatches(files) {
+  const out = [];
+  for (const f of files) {
+    const b = out.find((x) => x.length < SHARE_MAX_FILES && x.reduce((s, y) => s + y.size, 0) + f.size <= SHARE_MAX_BYTES);
+    if (b) b.push(f); else out.push([f]);
+  }
+  return out;
+}
 
 /**
- * Android: WhatsApp připíše sdílený text ke každé fotce zvlášť (4 fotky = 4× celý popis závady) a webová
- * aplikace to ovlivnit neumí. Víc fotek se proto posílá ve dvou krocích (přání uživatele 29. 10.): 1. fotky bez
- * textu (ve WhatsAppu jako album), 2. text do stejné skupiny – přijde pod fotky jen jednou. Na iPhonu odejdou
- * fotky i text jedním sdílením a text přijde pod fotky – tak to fungovalo od začátku.
+ * Android: WhatsApp připíše sdílený text ke každé fotce a videu zvlášť (4 fotky = 4× celý popis závady) a
+ * webová aplikace to ovlivnit neumí. Víc příloh se proto posílá ve dvou krocích (přání uživatele 29. 10.):
+ * 1. fotky a videa bez textu (ve WhatsAppu jako album; co se nevejde do jednoho sdílení, v dalším kroku),
+ * 2. text do stejné skupiny – přijde pod ně jen jednou. Na iPhonu odejdou přílohy i text jedním sdílením
+ * a text přijde pod ně – tak to fungovalo od začátku.
  */
-const twoSteps = (photoCount) => isAndroid() && photoCount > 1;
+const twoSteps = (count) => isAndroid() && count > 1;
 
 // ───── Víc fotek jako jeden obrázek (Android, „Jiné možnosti“) ─────
 // Fotky pod sebou, text u obrázku jen jednou, vše jedním sdílením. WhatsApp obrázek zmenší podle delší strany
@@ -713,14 +775,21 @@ async function collageFile(files, w) {
   return blob ? new File([blob], `zavada-${w.number.slice(-4)}-fotky.jpg`, { type: 'image/jpeg' }) : null;
 }
 
-// Fotky pro sdílení (jen ty, které telefon sdílet umí)
-export async function prepareShare(filesOrPromise) {
-  return shareable(await filesOrPromise);
+/**
+ * Příprava příloh ke sdílení (jen ty, které telefon sdílet umí): { ready (slib { files, missing }),
+ * bytes ([staženo, celkem] stahovaného videa), listen(fn) – okno sdílení podle něj ukazuje průběh }.
+ */
+function prepareMedia(d, w) {
+  const listeners = new Set();
+  const job = { bytes: null, listen: (fn) => { listeners.add(fn); return () => listeners.delete(fn); } };
+  job.ready = mediaFiles(d, w, (loaded, total) => { job.bytes = [loaded, total]; listeners.forEach((fn) => fn()); })
+    .then((r) => ({ ...r, files: shareable(r.files) }));
+  return job;
 }
 
 // Obrázek s fotkami pod sebou se skládá až po klepnutí (sdílení musí začít do pár sekund – to stihne)
 async function collageShare(text, files, w) {
-  const one = await collageFile(files, w).catch(() => null);
+  const one = await collageFile(files.filter((f) => !isVideo(f)), w).catch(() => null);
   if (!one) throw new Error('obrázek z fotek se nepodařilo připravit.');
   await nativeShare(text, shareable([one]));
 }
@@ -745,43 +814,45 @@ async function nativeShare(text, files) {
 }
 
 /**
- * Sdílení na jedno klepnutí: rovnou otevře nabídku sdílení telefonu (text + fotky). Na Androidu s víc fotkami
- * otevře okno se dvěma kroky (twoSteps). Když to nejde (počítač, fotky se stahují dlouho, telefon sdílení
- * odmítne), otevře okno s jedním tlačítkem.
+ * Sdílení na jedno klepnutí: rovnou otevře nabídku sdílení telefonu (text + fotky a videa). Na Androidu s víc
+ * přílohami otevře okno s kroky (twoSteps). Když to nejde (počítač, video se stahuje, příloha se nestáhla,
+ * telefon sdílení odmítne), otevře okno s jedním tlačítkem.
  */
 export async function quickShare({ d, w, openDialog, onShared }) {
   if (!w || typeof navigator.share !== 'function') { openDialog({}); return; }
-  const ready = prepareShare(photoFiles(d, w));
-  if (twoSteps((d.attachments ?? []).filter((a) => a.kind !== 'video' && a.url).length)) {
-    openDialog({ d, w, ready });
+  const job = prepareMedia(d, w);
+  if (twoSteps((d.attachments ?? []).filter((a) => a.url).length)) {
+    openDialog({ d, w, job });
     return;
   }
-  const files = await Promise.race([ready, new Promise((res) => setTimeout(() => res(null), 2500))]);
-  if (files === null) { openDialog({ d, w, ready }); return; }
+  const r = await Promise.race([job.ready, new Promise((res) => setTimeout(() => res(null), 2500))]);
+  if (r === null || r.missing) { openDialog({ d, w, job }); return; }
   try {
-    await nativeShare(defectShareText(d, w), files);
+    await nativeShare(defectShareText(d, w), r.files);
     onShared?.();
   } catch (e) {
-    if (e.name !== 'AbortError') openDialog({ d, w, files, error: new Error(`Sdílení se nepovedlo: ${e.message}`) });
+    if (e.name !== 'AbortError') openDialog({ d, w, files: r.files, error: new Error(`Sdílení se nepovedlo: ${e.message}`) });
   }
 }
 
 /**
- * Okno pro sdílení: náhled zprávy a jedno velké tlačítko, na Androidu s víc fotkami dvě (fotky, pak text).
- * prepared = { d, w, files | ready (prepareShare), error } (bez sítě).
+ * Okno pro sdílení: náhled zprávy a jedno velké tlačítko, na Androidu s víc přílohami kroky (přílohy, pak text).
+ * prepared = { d, w, files | job (prepareMedia), error } (bez sítě).
  */
 export function ShareDialog({ id, prepared = {}, onClose }) {
   const { api, toast } = useApp();
   const [data, setData] = useState(prepared.d && prepared.w ? { d: prepared.d, w: prepared.w } : null);
-  const [files, setFiles] = useState(prepared.files ?? null); // null = připravuji fotky
+  const [media, setMedia] = useState(prepared.files ? { files: prepared.files, missing: 0 } : null); // null = připravuji
+  const [bytes, setBytes] = useState(prepared.job?.bytes ?? null); // stahování videa [staženo, celkem]
   const [error, setError] = useState(prepared.error ?? null);
-  const [photosSent, setPhotosSent] = useState(false);
+  const [sent, setSent] = useState(0); // kolik kroků s přílohami už odešlo
   useBackClose(onClose);
 
   useEffect(() => {
     let alive = true;
+    let unlisten = () => {};
     (async () => {
-      let { d, w } = prepared;
+      let { d, w, job } = prepared;
       if (!d || !w) {
         d = await api.getDefect(id);
         if (!d) throw new Error('Závada nebyla nalezena (možná byla smazána).');
@@ -789,23 +860,29 @@ export function ShareDialog({ id, prepared = {}, onClose }) {
         if (alive) setData({ d, w });
       }
       if (!prepared.files) {
-        const f = await (prepared.ready ?? prepareShare(photoFiles(d, w)));
-        if (alive) setFiles(f);
+        job ??= prepareMedia(d, w);
+        unlisten = job.listen(() => alive && setBytes(job.bytes));
+        const r = await job.ready;
+        if (alive) setMedia(r);
       }
     })().catch((e) => alive && setError(e));
     const onKey = (e) => e.key === 'Escape' && onClose();
     addEventListener('keydown', onKey);
-    return () => { alive = false; removeEventListener('keydown', onKey); };
+    return () => { alive = false; unlisten(); removeEventListener('keydown', onKey); };
   }, [id]);
 
+  const files = media?.files ?? null;
   const count = files?.length ?? 0;
   const two = twoSteps(count);
+  const steps = two ? shareBatches(files) : [];
+  const videos = files?.filter(isVideo) ?? [];
+  const photoCount = count - videos.length;
   const text = data ? defectShareText(data.d, data.w) : '';
   const canNative = typeof navigator.share === 'function';
-  const preparing = canNative && files === null && !error;
+  const preparing = canNative && media === null && !error;
   const waLink = `https://wa.me/?text=${encodeURIComponent(text)}`;
 
-  // done = false: okno zůstane otevřené (po fotkách se ještě posílá text)
+  // done = false: okno zůstane otevřené (po přílohách se ještě posílá text)
   async function send(share, done = true) {
     setError(null);
     try {
@@ -817,11 +894,12 @@ export function ShareDialog({ id, prepared = {}, onClose }) {
       if (e.name !== 'AbortError') setError(new Error(`Sdílení se nepovedlo: ${e.message}`));
     }
   }
-  // Text se při tom zkopíruje – ve WhatsAppu ho jde hned vložit pod fotky, bez návratu do aplikace (krok 2)
-  const sendPhotos = () => send(async () => {
-    await navigator.clipboard?.writeText(text).catch(() => {});
-    await nativeShare('', files);
-    setPhotosSent(true);
+  // Text se při posledním kroku s přílohami zkopíruje – ve WhatsAppu ho jde hned vložit pod ně, bez návratu
+  // do aplikace (krok s textem)
+  const sendBatch = (i) => send(async () => {
+    if (i === steps.length - 1) await navigator.clipboard?.writeText(text).catch(() => {});
+    await nativeShare('', steps[i]);
+    setSent((n) => Math.max(n, i + 1));
   }, false);
   async function copy() {
     try {
@@ -832,7 +910,9 @@ export function ShareDialog({ id, prepared = {}, onClose }) {
     }
   }
 
-  const what = !count ? '' : count === 1 ? ' (text + fotka)' : ` (text + ${plural(count, 'fotka', 'fotky', 'fotek')})`;
+  const what = count ? ` (text + ${mediaLabel(files)})` : '';
+  const sentWhat = [photoCount && 'fotek', videos.length && (videos.length === 1 ? 'videa' : 'videí')].filter(Boolean).join(' a ');
+  const preparingLabel = bytes ? `Stahuji video… ${megabytes(bytes[0])} z ${megabytes(bytes[1])}` : 'Připravuji fotky…';
   return html`
     <div class="dialog-backdrop" onClick=${(e) => e.target === e.currentTarget && onClose()}>
       <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="share-title">
@@ -841,6 +921,9 @@ export function ShareDialog({ id, prepared = {}, onClose }) {
           <button class="icon-btn" onClick=${onClose} aria-label="Zavřít"><${Icon} name="x" /></button>
         </div>
         <${ErrorBox} error=${error} />
+        ${media?.missing > 0 && html`
+          <p class="warn small">Některé fotky nebo video se nepodařilo stáhnout (slabý signál?) – pošle se jen to, co se stáhlo.
+            Zkuste to znovu se signálem.</p>`}
         ${!data && !error && html`<${Loading} />`}
         ${data && html`
           ${!canNative
@@ -848,20 +931,25 @@ export function ShareDialog({ id, prepared = {}, onClose }) {
                 onClick=${() => praise(toast)}>Otevřít WhatsApp</a>
               <p class="muted small">Otevře se WhatsApp s připraveným textem, vyberete jen skupinu. Fotky pošlete z telefonu.</p>`
             : two
-              ? html`<button class="btn ${photosSent ? '' : 'btn-whatsapp'} block big-btn" onClick=${sendPhotos}>
-                  ${photosSent && html`<${Icon} name="check" />`} 1. Poslat ${plural(count, 'fotka', 'fotky', 'fotek')}</button>
-                <button class="btn ${photosSent ? 'btn-whatsapp' : ''} block big-btn" onClick=${() => send(() => nativeShare(text, []))}>
-                  2. Poslat text</button>
-                <p class="muted small">Text zprávy se při kroku 1 zkopíruje: po odeslání fotek ho ve WhatsAppu vložte pod ně
-                  (podržet prst v poli pro zprávu → Vložit). Nebo se vraťte sem a klepněte na 2. Poslat text – do stejné skupiny.</p>`
+              ? html`${steps.map((b, i) => html`
+                  <button class="btn ${sent === i ? 'btn-whatsapp' : ''} block big-btn" onClick=${() => sendBatch(i)}>
+                    ${sent > i && html`<${Icon} name="check" />`} ${i + 1}. Poslat ${mediaLabel(b, true)}</button>`)}
+                <button class="btn ${sent >= steps.length ? 'btn-whatsapp' : ''} block big-btn" onClick=${() => send(() => nativeShare(text, []))}>
+                  ${steps.length + 1}. Poslat text</button>
+                <p class="muted small">Text zprávy se při kroku ${steps.length} zkopíruje: po odeslání ${sentWhat} ho ve WhatsAppu vložte pod ně
+                  (podržet prst v poli pro zprávu → Vložit). Nebo se vraťte sem a klepněte na ${steps.length + 1}. Poslat text – do stejné skupiny.</p>`
               : html`<button class="btn btn-whatsapp block big-btn" disabled=${preparing} onClick=${() => send(() => nativeShare(text, files ?? []))}>
-                  ${preparing ? 'Připravuji fotky…' : `Poslat do WhatsAppu${what}`}</button>
+                  ${preparing ? preparingLabel : `Poslat do WhatsAppu${what}`}</button>
                 <p class="muted small">V nabídce klepněte na WhatsApp a vyberte skupinu.</p>`}
           <div class="share-preview">${text}</div>
           <details class="share-more" open=${!!error}>
             <summary>Jiné možnosti</summary>
-            ${canNative && two && html`<button class="btn block" onClick=${() => send(() => collageShare(text, files, data.w))}>
-              Fotky pod sebou v jednom obrázku i s textem</button>`}
+            ${canNative && two && photoCount > 1 && html`
+              <button class="btn block" onClick=${() => send(() => collageShare(text, files, data.w))}>
+                Fotky pod sebou v jednom obrázku i s textem</button>
+              ${shareBatches(videos).map((b, i, all) => html`
+                <button class="btn block" onClick=${() => send(() => nativeShare('', b), false)}>
+                  Poslat ${mediaLabel(b, true)} zvlášť${all.length > 1 ? ` (${i + 1}/${all.length})` : ''}</button>`)}`}
             ${canNative && !two && html`<a class="btn block" href=${waLink} target="_blank" rel="noopener"
               onClick=${() => praise(toast)}>WhatsApp jen s textem</a>`}
             <button class="btn block" onClick=${copy}><${Icon} name="clipboard" size=${18} /> Kopírovat text</button>
@@ -1281,19 +1369,78 @@ export function Preview({ kind, url, onRemove }) {
     </div>`;
 }
 
-/** Vybrané soubory, které jde přiložit (fotky a videa do MAX_VIDEO_MB); u ostatních ukáže chybu. */
-export function acceptMedia(list, toast) {
-  const ok = [];
-  for (const f of list) {
-    if (!f.type.startsWith('image/') && !f.type.startsWith('video/')) {
-      toast(`Soubor ${f.name} není fotka ani video.`, { kind: 'error' });
-    } else if (f.type.startsWith('video/') && f.size > MAX_VIDEO_MB * 1024 * 1024) {
-      toast(`Video je větší než ${MAX_VIDEO_MB} MB – zkraťte ho nebo natočte v nižším rozlišení.`, { kind: 'error' });
-    } else {
-      ok.push(f);
+const megabytes = (bytes) => `${(bytes / 1048576).toFixed(bytes < 10 * 1048576 ? 1 : 0).replace('.', ',')} MB`;
+
+/**
+ * Přidávání fotek a videí do výběru (formulář závady, oprava závady). Co není fotka ani video, odmítne.
+ * Video nad MAX_VIDEO_MB se nejdřív zmenší v telefonu (js/video.js) a do výběru přibude až potom; během
+ * převodu vrací stav { progress (0–1), pass, cancel } pro ShrinkingVideo, jinak null. Víc velkých videí po sobě.
+ */
+export function useAddMedia(setFiles) {
+  const { toast } = useApp();
+  const [shrinking, setShrinking] = useState(null);
+  const queue = useRef(Promise.resolve());
+  const current = useRef(null); // AbortController běžícího převodu
+  const alive = useRef(true);
+  useEffect(() => () => { alive.current = false; current.current?.abort(); }, []);
+
+  async function shrink(file) {
+    if (!alive.current) return;
+    const ac = new AbortController();
+    current.current = ac;
+    let shown = '';
+    const onProgress = (p, pass = 1) => {
+      const key = `${pass}:${Math.floor(p * 100)}`;
+      if (key !== shown && alive.current) { shown = key; setShrinking({ progress: p, pass, cancel: () => ac.abort() }); }
+    };
+    onProgress(0);
+    // telefon během převodu nezhasne (na pozadí by převod stál)
+    const lock = await navigator.wakeLock?.request('screen').catch(() => null);
+    try {
+      const { shrinkVideo } = await import('./video.js');
+      const r = await shrinkVideo(file, { onProgress, signal: ac.signal });
+      if (!alive.current) return;
+      setFiles((prev) => [...prev, r.file]);
+      toast(`Video zmenšeno z ${megabytes(file.size)} na ${megabytes(r.file.size)}.`
+        + (r.noAudio ? ' Zvuk se převést nepodařilo – video je bez zvuku.' : ''), { duration: 6000 });
+    } catch (e) {
+      if (e.name !== 'AbortError' && alive.current) toast(e.message, { kind: 'error', duration: 10000 });
+    } finally {
+      lock?.release().catch(() => {});
+      current.current = null;
+      if (alive.current) setShrinking(null);
     }
   }
-  return ok;
+
+  function add(list) {
+    const ok = [];
+    for (const f of list) {
+      if (!f.type.startsWith('image/') && !f.type.startsWith('video/')) {
+        toast(`Soubor ${f.name} není fotka ani video.`, { kind: 'error' });
+      } else if (f.type.startsWith('video/') && f.size > MAX_VIDEO_MB * 1024 * 1024) {
+        queue.current = queue.current.then(() => shrink(f));
+      } else {
+        ok.push(f);
+      }
+    }
+    if (ok.length) setFiles((prev) => [...prev, ...ok]);
+  }
+  return [add, shrinking];
+}
+
+/** Průběh zmenšování velkého videa (useAddMedia) s možností převod zrušit. */
+export function ShrinkingVideo({ state }) {
+  if (!state) return null;
+  const pct = Math.floor(state.progress * 100);
+  return html`
+    <div class="shrinking" role="status">
+      <div class="shrinking-head">
+        <b>Zmenšuji video…${state.pass > 1 ? ` ${state.pass}. pokus` : ''} ${pct} %</b>
+        <button type="button" class="btn" onClick=${state.cancel}>Zrušit</button>
+      </div>
+      <progress max="100" value=${pct}></progress>
+      <div class="hint">Video má přes ${MAX_VIDEO_MB} MB, převádí se na menší MP4 (Full HD). Nechte aplikaci otevřenou.</div>
+    </div>`;
 }
 
 /** Náhledy vybraných souborů (adresy se po změně výběru uvolní). */

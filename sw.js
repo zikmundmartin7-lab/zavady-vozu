@@ -1,15 +1,18 @@
 // Service worker: rychlé spuštění z paměti telefonu, offline záloha a push upozornění na nové závady.
 
-const CACHE = 'zavady-v72'; // zvýšit spolu s APP_VERSION v js/version.js
+const CACHE = 'zavady-v73'; // zvýšit spolu s APP_VERSION v js/version.js
 const PHOTO_CACHE = 'zavady-foto'; // fotky závad a obrázky katalogu (přežije novou verzi aplikace)
 const SHARED_CACHE = 'zavady-sdilene'; // fotky sdílené do aplikace z galerie, než si je vyzvedne formulář (js/draft.js)
 // Skener čísla vozu: neuronové sítě a ONNX runtime (asi 25 MB). V terénu nemusí být signál, proto se stáhnou
 // hned s novou verzí aplikace (jen poprvé, pak zůstávají v paměti telefonu i přes další verze). Když se to
 // nepovede, dotáhne je aplikace při dalším spuštění se signálem (prefetchOcr v js/offline.js), případně
 // skener při otevření. Při změně sítí nebo runtime zvýšit; stejný název a seznam souborů je v js/offline.js.
+// Patří sem i knihovna pro převod videa (js/video.js) – velké video se zmenšuje i bez signálu; v názvu
+// souboru je verze, nová verze knihovny = nový soubor.
 const OCR_CACHE = 'zavady-ocr-v1';
 const OCR_FILES = ['vendor/ort/ort.wasm.min.mjs', 'vendor/ort/ort-wasm-simd-threaded.mjs',
-  'vendor/ort/ort-wasm-simd-threaded.wasm', 'models/det.onnx', 'models/rec_latin.onnx', 'models/rec_latin_dict.txt'];
+  'vendor/ort/ort-wasm-simd-threaded.wasm', 'models/det.onnx', 'models/rec_latin.onnx', 'models/rec_latin_dict.txt',
+  'vendor/mediabunny-1.65.2.min.mjs'];
 const OCR_PATHS = new Set(OCR_FILES.map((u) => new URL(u, location.href).pathname));
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest', 'css/app.css',
@@ -17,7 +20,7 @@ const SHELL = [
   'js/views/account.js', 'js/views/codes.js', 'js/views/defect.js', 'js/views/form.js', 'js/views/groups.js',
   'js/views/regulations.js', 'js/views/wagon.js', 'js/views/admin.js', 'js/views/overview.js',
   'js/outbox.js', 'js/draft.js', 'js/history.js', 'js/xlsx.js', 'js/offline.js', 'js/version.js',
-  'js/views/scanner.js', 'js/light.js', 'js/ocr.js', 'js/ort.js', 'js/dictation.js', 'js/series.js', 'data/rady.json',
+  'js/views/scanner.js', 'js/light.js', 'js/ocr.js', 'js/ort.js', 'js/dictation.js', 'js/series.js', 'js/video.js', 'data/rady.json',
   'vendor/preact-htm.js', 'vendor/supabase.js', 'icons/icon.svg?v=2', 'icons/icon-192.png?v=2', 'icons/badge-96.png?v=2',
 ];
 
