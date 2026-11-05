@@ -271,7 +271,7 @@ export function DefectFormView({ editId, params }) {
               ${complete && !isValidCheckDigit(number) && html`
                 <div class="warn"><${Icon} name="alert" size=${16} /> Kontrolní číslice nesedí – pro toto číslo by měla být ${checkDigit(number)}.</div>`}
               ${complete && found && found !== 'offline' && html`
-                <div class="ok-note"><${Icon} name="check" size=${16} /> Vůz už je v evidenci – skupina <b>${found.group_name}</b>.</div>`}
+                <div class="ok-note"><${Icon} name="check" size=${16} /> <span>Vůz už je v evidenci – skupina <b>${found.group_name}</b>.</span></div>`}
               ${complete && found === 'offline' && html`
                 <div class="warn"><${Icon} name="cloud" size=${16} /> Bez signálu nelze ověřit, jestli vůz už je v evidenci.
                   Vyberte skupinu pro případ, že je nový. Závada se uloží v telefonu a odešle později.</div>`}
