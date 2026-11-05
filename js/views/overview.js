@@ -125,79 +125,85 @@ export function OverviewView() {
 
   return html`
     <${TopBar} title="Přehled závad" sub="Všechny vozy"><${UserButton} /><//>
-    <main class="page with-nav">
+    <main class="page with-nav wide">
       <${OutboxBanner} />
-      <div class="segmented" role="group" aria-label="Stav závad">
-        ${Object.entries(STATUS).map(([k, v]) => html`
-          <button type="button" aria-pressed=${status === k} onClick=${() => { setStatus(k); setLimit(PAGE); }}>${v}</button>`)}
-      </div>
-      <label class="search-box">
-        <${Icon} name="search" />
-        <input type="search" placeholder="Hledat: číslo vozu, kód, popis, jméno" value=${q}
-          onInput=${(e) => { setQ(e.currentTarget.value); setLimit(PAGE); }} />
-      </label>
-      <div class="chips-select">
-        <button type="button" class="chip-btn ${!groupIds.length ? 'active' : ''}" aria-pressed=${!groupIds.length}
-          onClick=${() => setGroupIds([])}>Všechny skupiny</button>
-        ${groups.data?.map((g) => html`
-          <button type="button" key=${g.id} class="chip-btn ${groupIds.includes(g.id) ? 'active' : ''}"
-            aria-pressed=${groupIds.includes(g.id)} onClick=${() => toggleGroup(g.id)}><${GroupName} g=${g} /></button>`)}
-      </div>
-      <button type="button" class="link-btn" onClick=${() => setMore(!more)}>${more ? 'Skrýt další filtry' : 'Další filtry (období, řazení)'}</button>
-      ${more && html`
-        <div class="card filters">
-          <label class="field">Zjištěno od<input type="date" value=${from} onInput=${(e) => setFrom(e.currentTarget.value)} /></label>
-          <label class="field">Zjištěno do<input type="date" value=${to} onInput=${(e) => setTo(e.currentTarget.value)} /></label>
-          <label class="field">Řazení
-            <select value=${sort} onChange=${(e) => setSort(e.currentTarget.value)}>
-              <option value="new">Nejnovější nahoře</option>
-              <option value="old">Nejstarší nahoře</option>
-              <option value="wagon">Podle posledního čtyřčíslí vozu</option>
-            </select></label>
-          ${filtersActive && html`<button type="button" class="btn" onClick=${() => { setGroupIds([]); setQ(''); setFrom(''); setTo(''); }}>Zrušit filtry</button>`}
-        </div>`}
+      <div class="overview-layout">
+        <div class="overview-side">
+          <div class="segmented" role="group" aria-label="Stav závad">
+            ${Object.entries(STATUS).map(([k, v]) => html`
+              <button type="button" aria-pressed=${status === k} onClick=${() => { setStatus(k); setLimit(PAGE); }}>${v}</button>`)}
+          </div>
+          <label class="search-box">
+            <${Icon} name="search" />
+            <input type="search" placeholder="Hledat: číslo vozu, kód, popis, jméno" value=${q}
+              onInput=${(e) => { setQ(e.currentTarget.value); setLimit(PAGE); }} />
+          </label>
+          <div class="chips-select">
+            <button type="button" class="chip-btn ${!groupIds.length ? 'active' : ''}" aria-pressed=${!groupIds.length}
+              onClick=${() => setGroupIds([])}>Všechny skupiny</button>
+            ${groups.data?.map((g) => html`
+              <button type="button" key=${g.id} class="chip-btn ${groupIds.includes(g.id) ? 'active' : ''}"
+                aria-pressed=${groupIds.includes(g.id)} onClick=${() => toggleGroup(g.id)}><${GroupName} g=${g} /></button>`)}
+          </div>
+          <button type="button" class="link-btn" onClick=${() => setMore(!more)}>${more ? 'Skrýt další filtry' : 'Další filtry (období, řazení)'}</button>
+          ${more && html`
+            <div class="card filters">
+              <label class="field">Zjištěno od<input type="date" value=${from} onInput=${(e) => setFrom(e.currentTarget.value)} /></label>
+              <label class="field">Zjištěno do<input type="date" value=${to} onInput=${(e) => setTo(e.currentTarget.value)} /></label>
+              <label class="field">Řazení
+                <select value=${sort} onChange=${(e) => setSort(e.currentTarget.value)}>
+                  <option value="new">Nejnovější nahoře</option>
+                  <option value="old">Nejstarší nahoře</option>
+                  <option value="wagon">Podle posledního čtyřčíslí vozu</option>
+                </select></label>
+              ${filtersActive && html`<button type="button" class="btn" onClick=${() => { setGroupIds([]); setQ(''); setFrom(''); setTo(''); }}>Zrušit filtry</button>`}
+            </div>`}
+        </div>
 
-      <div class="overview-bar">
-        <span class="muted">${data.data ? plural(rows.length, 'závada', 'závady', 'závad') : ''}</span>
-        <span class="spacer"></span>
-        <button class="btn" disabled=${busy || !rows.length} onClick=${doExport}><${Icon} name="download" size=${18} /> Export do Excelu</button>
-      </div>
+        <div class="overview-main">
+          <div class="overview-bar">
+            <span class="muted">${data.data ? plural(rows.length, 'závada', 'závady', 'závad') : ''}</span>
+            <span class="spacer"></span>
+            <button class="btn" disabled=${busy || !rows.length} onClick=${doExport}><${Icon} name="download" size=${18} /> Export do Excelu</button>
+          </div>
 
-      <${ErrorBox} error=${data.error} />
-      ${!data.data && data.loading && html`<${Loading} />`}
-      ${data.data && rows.length === 0 && html`<${Empty}>Žádné závady neodpovídají filtru.<//>`}
-      <div class="overview-list">
-        ${rows.slice(0, limit).map((r) => {
-          // Klepnutím se závada rozbalí přímo v seznamu (přání uživatele 31. 10. – jako pohyby v internetovém
-          // bankovnictví), ostatní zůstanou vidět; dalším klepnutím na hlavičku se zase zabalí.
-          const isOpen = opened.includes(r.id);
-          return html`
-          <div key=${r.id} class="overview-row ${r.resolved_at ? 'resolved' : ''} ${unread(r) ? 'unread' : ''} ${isOpen ? 'open' : ''}">
-            <button type="button" class="overview-toggle" aria-expanded=${isOpen} onClick=${() => toggleRow(r.id)}>
-              <div class="overview-head">
-                ${unread(r) && html`<span class="unread-dot" title="Nová závada – vůz jste od jejího zapsání neotevřeli"></span>`}
-                <${WagonNumber} number=${r.number} />
-                <span class="muted small">${r.group_name}</span>
-                <span class="spacer"></span>
-                ${!isOpen && r.defect_code && html`<span class="chip chip-code">kód ${r.defect_code}</span>`}
-                ${!isOpen && r.resolved_at && html`<span class="chip chip-ok">Opraveno</span>`}
-                <${Icon} name="down" size=${18} class=${`muted ${isOpen ? 'flip' : ''}`} />
-              </div>
-              ${!isOpen && html`
-                <div class="overview-text">${r.description}</div>
-                <div class="muted small">
-                  zjištěno ${formatDateTime(foundAtOf(r))} · ${r.created_by_name || 'neznámý'}
-                  ${r.comment_count ? ` · ${plural(r.comment_count, 'komentář', 'komentáře', 'komentářů')}` : ''}
-                  ${r.attachment_count ? ` · ${r.attachment_count} 📎` : ''}
-                  ${r.resolved_at ? ` · opraveno ${formatDateTime(r.resolved_at)}` : ''}
-                </div>`}
-            </button>
-            ${isOpen && html`<${OverviewDefect} r=${r} />`}
-          </div>`;
-        })}
+          <${ErrorBox} error=${data.error} />
+          ${!data.data && data.loading && html`<${Loading} />`}
+          ${data.data && rows.length === 0 && html`<${Empty}>Žádné závady neodpovídají filtru.<//>`}
+          <div class="overview-list">
+            ${rows.slice(0, limit).map((r) => {
+              // Klepnutím se závada rozbalí přímo v seznamu (přání uživatele 31. 10. – jako pohyby v internetovém
+              // bankovnictví), ostatní zůstanou vidět; dalším klepnutím na hlavičku se zase zabalí.
+              const isOpen = opened.includes(r.id);
+              return html`
+              <div key=${r.id} class="overview-row ${r.resolved_at ? 'resolved' : ''} ${unread(r) ? 'unread' : ''} ${isOpen ? 'open' : ''}">
+                <button type="button" class="overview-toggle" aria-expanded=${isOpen} onClick=${() => toggleRow(r.id)}>
+                  <div class="overview-head">
+                    ${unread(r) && html`<span class="unread-dot" title="Nová závada – vůz jste od jejího zapsání neotevřeli"></span>`}
+                    <${WagonNumber} number=${r.number} />
+                    <span class="muted small">${r.group_name}</span>
+                    <span class="spacer"></span>
+                    ${!isOpen && r.defect_code && html`<span class="chip chip-code">kód ${r.defect_code}</span>`}
+                    ${!isOpen && r.resolved_at && html`<span class="chip chip-ok">Opraveno</span>`}
+                    <${Icon} name="down" size=${18} class=${`muted ${isOpen ? 'flip' : ''}`} />
+                  </div>
+                  ${!isOpen && html`
+                    <div class="overview-text">${r.description}</div>
+                    <div class="muted small">
+                      zjištěno ${formatDateTime(foundAtOf(r))} · ${r.created_by_name || 'neznámý'}
+                      ${r.comment_count ? ` · ${plural(r.comment_count, 'komentář', 'komentáře', 'komentářů')}` : ''}
+                      ${r.attachment_count ? ` · ${r.attachment_count} 📎` : ''}
+                      ${r.resolved_at ? ` · opraveno ${formatDateTime(r.resolved_at)}` : ''}
+                    </div>`}
+                </button>
+                ${isOpen && html`<${OverviewDefect} r=${r} />`}
+              </div>`;
+            })}
+          </div>
+          ${rows.length > limit && html`
+            <button class="btn btn-ghost block toggle" onClick=${() => setLimit(limit + PAGE)}>Zobrazit další (${rows.length - limit})</button>`}
+        </div>
       </div>
-      ${rows.length > limit && html`
-        <button class="btn btn-ghost block toggle" onClick=${() => setLimit(limit + PAGE)}>Zobrazit další (${rows.length - limit})</button>`}
     </main>
     <${BottomNav} active="prehled" />`;
 }

@@ -51,7 +51,7 @@ export function WagonView({ id }) {
 
   return html`
     <${TopBar} back=${backTarget(`#/skupina/${w.group_id}`)} title=${formatNumber(w.number)} sub=${w.group_name} />
-    <main class="page with-nav">
+    <main class="page with-nav wide">
       <section class="card wagon-card">
         <${WagonNumber} number=${w.number} class="big" />
         <div class="wagon-meta">
@@ -72,7 +72,7 @@ export function WagonView({ id }) {
       ${defects.data && html`
         <h2 class="section-title">Aktivní závady (${open.length})</h2>
         ${open.length
-          ? open.map((d) => html`<${DefectCard} key=${d.id} d=${d} wagon=${w} isNew=${isNew(d)} />`)
+          ? html`<div class="defect-list">${open.map((d) => html`<${DefectCard} key=${d.id} d=${d} wagon=${w} isNew=${isNew(d)} />`)}</div>`
           : html`<${Empty}><${Icon} name="check" /> Na voze nejsou žádné aktivní závady.<//>`}
 
         <button class="btn btn-ghost block toggle" onClick=${() => setShowHistory(!showHistory)}
@@ -80,7 +80,7 @@ export function WagonView({ id }) {
           <${Icon} name="history" /> Historie oprav (${resolved.length})
           ${resolved.length > 0 && html`<${Icon} name="down" class=${showHistory ? 'flip' : ''} />`}
         </button>
-        ${showHistory && resolved.map((d) => html`<${DefectCard} key=${d.id} d=${d} wagon=${w} />`)}`}
+        ${showHistory && html`<div class="defect-list">${resolved.map((d) => html`<${DefectCard} key=${d.id} d=${d} wagon=${w} />`)}</div>`}`}
 
       ${can.admin(me) && html`
         <div class="danger-zone">

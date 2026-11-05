@@ -15,7 +15,7 @@ export function HomeView() {
 
   return html`
     <${TopBar} title="Závady vozů"><${UserButton} /><//>
-    <main class="page with-nav">
+    <main class="page with-nav wide">
       <${OutboxBanner} />
       <div class="offers">
         <${InstallOffer} />
@@ -94,7 +94,9 @@ function WagonDefects({ w }) {
       <${ErrorBox} error=${defects.error} />
       ${!defects.data && defects.loading && html`<${Loading} />`}
       ${defects.data && !open.length && html`<${Empty}><${Icon} name="check" /> Na voze nejsou žádné aktivní závady.<//>`}
-      ${open.map((d) => html`<${DefectCard} key=${d.id} d=${d} wagon=${w} isNew=${isNewDefect(d, seenBefore, me)} />`)}
+      <div class="defect-list">
+        ${open.map((d) => html`<${DefectCard} key=${d.id} d=${d} wagon=${w} isNew=${isNewDefect(d, seenBefore, me)} />`)}
+      </div>
       <div class="panel-links">
         <a class="btn" href="#/nova?vuz=${w.id}"><${Icon} name="plus" size=${18} /> Přidat závadu</a>
         <a class="btn" href="#/vuz/${w.id}">Otevřít vůz <${Icon} name="right" size=${18} /></a>
@@ -124,7 +126,7 @@ export function GroupView({ id }) {
       <${NewBadge} n=${g?.new_count} class="badge-inline" />
       <${Badge} n=${g?.open_count} class="badge-inline" />
     <//>
-    <main class="page with-nav">
+    <main class="page with-nav wide">
       <${WagonSearch} groupId=${id} onQuery=${setQ} />
       ${!q && html`
         <${ErrorBox} error=${wagons.error} />

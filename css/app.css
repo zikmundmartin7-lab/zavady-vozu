@@ -743,3 +743,61 @@ fieldset.field .check-row { margin: .45rem 0; color: var(--text); font-weight: 5
 }
 .jas input { flex: 1; min-width: 0; accent-color: #ffd43b; }
 .jas b { min-width: 2.2em; text-align: right; }
+
+/* ───── Tablet na šířku a počítač ─────
+   Platí až od 1000 × 560 px: telefon (i otočený na šířku, výška do ~480 px) a tablet na výšku vypadají stejně jako dřív.
+   Záložky ve svislém pruhu vlevo místo spodní lišty (víc místa na výšku), v pruhu i „Nová závada“ a komentáře,
+   takže nepřekrývají karty; úvod, skupina, vůz a Přehled na širší stránce (.page.wide), karty závad ve dvou
+   sloupcích, Přehled s filtry vlevo. Obaly .defect-list a .overview-* jinde rozložení nemění (display: contents). */
+
+.defect-list, .overview-layout, .overview-side, .overview-main { display: contents; }
+
+@media (min-width: 1000px) and (min-height: 560px) {
+  :root { --rail-w: 96px; --rail-top: calc(56px + env(safe-area-inset-top)); }
+  body:has(.page.wide) { --page-w: min(1080px, calc(100vw - 2 * var(--rail-w) - 32px)); }
+
+  .bottom-nav {
+    top: 0; right: auto; width: var(--rail-w); z-index: 9;
+    display: flex; flex-direction: column; gap: 4px;
+    padding: calc(var(--rail-top) + 128px) 8px calc(16px + env(safe-area-inset-bottom));
+    border-top: 0; border-right: 1px solid var(--border); box-shadow: none;
+  }
+  .bottom-nav a { padding: 10px 2px; border-radius: 16px; text-align: center; }
+  .bottom-nav a.active { background: var(--primary-soft); }
+  .bottom-nav a span { white-space: normal; }
+  .demo-banner { position: relative; z-index: 10; }
+  body:has(.bottom-nav) .fab {
+    left: 8px; right: auto; top: calc(var(--rail-top) + 32px); bottom: auto; width: calc(var(--rail-w) - 16px);
+    flex-direction: column; gap: 2px; padding: .7rem .25rem; border-radius: 18px;
+    font-size: .8rem; line-height: 1.2; text-align: center;
+  }
+  body:has(.bottom-nav) .fab-comments {
+    left: calc((var(--rail-w) - 60px) / 2); right: auto; bottom: calc(16px + env(safe-area-inset-bottom));
+    width: 60px; height: 60px; box-shadow: 0 2px 10px rgba(16, 24, 40, .22);
+  }
+  body:has(.bottom-nav) .toasts, body:has(.fab-comments) .toasts { bottom: calc(24px + env(safe-area-inset-bottom)); }
+  .page.with-nav, body:has(.fab-comments) .page.with-nav { padding-bottom: calc(48px + env(safe-area-inset-bottom)); }
+
+  .groups { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .page.wide .defect-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; align-items: start; margin-bottom: 12px; }
+  .page.wide .defect-list > .defect { margin: 0; }
+  .page.wide .defect-list:empty { display: none; }
+  /* vůz: číslo a skupina vlevo, „Přidat závadu“ vpravo místo tlačítka přes celou šířku */
+  .page.wide .wagon-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 24px; align-items: center; }
+  .page.wide .wagon-card > :not(.btn) { grid-column: 1; }
+  .page.wide .wagon-card > .btn { grid-column: 2; grid-row: 1 / span 3; margin: 0; padding: 0 1.6rem; min-height: 52px; }
+
+  .overview-layout { display: grid; grid-template-columns: 340px minmax(0, 1fr); gap: 24px; align-items: start; }
+  .overview-side, .overview-main { display: block; min-width: 0; }
+  .overview-side {
+    position: sticky; top: calc(var(--rail-top) + 16px); max-height: calc(100dvh - var(--rail-top) - 32px);
+    overflow-y: auto; overscroll-behavior: contain; margin: -4px; padding: 4px;
+  }
+  .overview-main .overview-bar { margin-top: 0; }
+
+  /* skener: rámeček v poměru stran jako v telefonu (~5 : 3), jinak by byl úzký pruh přes celou šířku (7 : 1)
+     a číslo i s řádky nad ním by se do něj nevešlo */
+  .scanner .guide { left: 50%; right: auto; top: 20%; height: 55%; aspect-ratio: 5 / 3; transform: translateX(-50%); }
+  .scanner .tip { top: calc(20% - 2.6rem); }
+  .scanner .reading { top: calc(75% + .8rem); }
+}
