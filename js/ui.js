@@ -711,14 +711,20 @@ function mediaLabel(files, acc = false) {
 }
 
 // Chrome v Androidu sdílí najednou nejvýš 10 souborů a dohromady 50 MiB, jinak sdílení odmítne – přílohy se
-// rozdělí do skupin, které se vejdou (fotky s videem obvykle do jedné)
+// rozdělí do skupin, které se vejdou. Fotky a videa nikdy spolu: sdílení s obojím dostane od Chromu typ */*
+// a WhatsApp ho otevře a hned zavře s „Nelze poslat prázdnou zprávu“ (Android, hlášení 5. 11.); fotky samy
+// (image/jpeg) chodí od začátku.
 const SHARE_MAX_FILES = 10;
 const SHARE_MAX_BYTES = 50 * 1024 * 1024;
 function shareBatches(files) {
   const out = [];
-  for (const f of files) {
-    const b = out.find((x) => x.length < SHARE_MAX_FILES && x.reduce((s, y) => s + y.size, 0) + f.size <= SHARE_MAX_BYTES);
-    if (b) b.push(f); else out.push([f]);
+  for (const kind of [files.filter((f) => !isVideo(f)), files.filter(isVideo)]) {
+    const own = [];
+    for (const f of kind) {
+      const b = own.find((x) => x.length < SHARE_MAX_FILES && x.reduce((s, y) => s + y.size, 0) + f.size <= SHARE_MAX_BYTES);
+      if (b) b.push(f); else own.push([f]);
+    }
+    out.push(...own);
   }
   return out;
 }
@@ -946,10 +952,7 @@ export function ShareDialog({ id, prepared = {}, onClose }) {
             <summary>Jiné možnosti</summary>
             ${canNative && two && photoCount > 1 && html`
               <button class="btn block" onClick=${() => send(() => collageShare(text, files, data.w))}>
-                Fotky pod sebou v jednom obrázku i s textem</button>
-              ${shareBatches(videos).map((b, i, all) => html`
-                <button class="btn block" onClick=${() => send(() => nativeShare('', b), false)}>
-                  Poslat ${mediaLabel(b, true)} zvlášť${all.length > 1 ? ` (${i + 1}/${all.length})` : ''}</button>`)}`}
+                Fotky pod sebou v jednom obrázku i s textem</button>`}
             ${canNative && !two && html`<a class="btn block" href=${waLink} target="_blank" rel="noopener"
               onClick=${() => praise(toast)}>WhatsApp jen s textem</a>`}
             <button class="btn block" onClick=${copy}><${Icon} name="clipboard" size=${18} /> Kopírovat text</button>
