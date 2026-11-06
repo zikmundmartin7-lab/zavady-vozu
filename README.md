@@ -123,4 +123,9 @@ navod.html                                návod k instalaci, Android i iPhone (
 tools/ikony.py, tools/vapid.html          ikony aplikace, generátor klíčů
 models/, vendor/                          sítě skeneru a cizí knihovny – licence v LICENCE-TRETICH-STRAN.md
 .github/workflows/keep-alive.yml          udržení projektu Supabase vzhůru
+LICENSE                                   autorská práva (všechna práva vyhrazena)
 ```
+
+## Autorská práva
+
+© 2026 Martin Zikmund, všechna práva vyhrazena – viz [LICENSE](LICENSE). Kód je veřejný jen k prohlížení, bez svolení autora ho nelze kopírovat, upravovat ani šířit. Cizí součásti mají vlastní licence: [LICENCE-TRETICH-STRAN.md](LICENCE-TRETICH-STRAN.md).
